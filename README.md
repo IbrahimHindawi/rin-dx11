@@ -47,6 +47,9 @@ Each lesson builds to an executable named after its file. Lessons find
 `resources/` and their shaders by walking up from the executable, so they run
 from anywhere.
 
+`python tools/screenshot.py` runs every built lesson, captures its window and
+writes the pictures to `shots/`; that is how each lesson here was checked.
+
 | key | does |
 |---|---|
 | W A S D, Space, Shift | fly (from 1.7 camera on) |

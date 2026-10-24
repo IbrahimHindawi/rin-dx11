@@ -33,52 +33,6 @@ import "std/memops.rin"
 scr_width: i32 = 1280;
 scr_height: i32 = 720;
 
-// a unit cube: position, normal, texture coordinate; counter-clockwise from outside
-cube_vertices: [288]f32 = {
-    // right (+x)
-     0.5, -0.5,  0.5,    1.0,  0.0,  0.0,   0.0, 1.0,
-     0.5, -0.5, -0.5,    1.0,  0.0,  0.0,   1.0, 1.0,
-     0.5,  0.5, -0.5,    1.0,  0.0,  0.0,   1.0, 0.0,
-     0.5, -0.5,  0.5,    1.0,  0.0,  0.0,   0.0, 1.0,
-     0.5,  0.5, -0.5,    1.0,  0.0,  0.0,   1.0, 0.0,
-     0.5,  0.5,  0.5,    1.0,  0.0,  0.0,   0.0, 0.0,
-    // left (-x)
-    -0.5, -0.5, -0.5,   -1.0,  0.0,  0.0,   0.0, 1.0,
-    -0.5, -0.5,  0.5,   -1.0,  0.0,  0.0,   1.0, 1.0,
-    -0.5,  0.5,  0.5,   -1.0,  0.0,  0.0,   1.0, 0.0,
-    -0.5, -0.5, -0.5,   -1.0,  0.0,  0.0,   0.0, 1.0,
-    -0.5,  0.5,  0.5,   -1.0,  0.0,  0.0,   1.0, 0.0,
-    -0.5,  0.5, -0.5,   -1.0,  0.0,  0.0,   0.0, 0.0,
-    // top (+y)
-    -0.5,  0.5,  0.5,    0.0,  1.0,  0.0,   0.0, 1.0,
-     0.5,  0.5,  0.5,    0.0,  1.0,  0.0,   1.0, 1.0,
-     0.5,  0.5, -0.5,    0.0,  1.0,  0.0,   1.0, 0.0,
-    -0.5,  0.5,  0.5,    0.0,  1.0,  0.0,   0.0, 1.0,
-     0.5,  0.5, -0.5,    0.0,  1.0,  0.0,   1.0, 0.0,
-    -0.5,  0.5, -0.5,    0.0,  1.0,  0.0,   0.0, 0.0,
-    // bottom (-y)
-    -0.5, -0.5, -0.5,    0.0, -1.0,  0.0,   0.0, 1.0,
-     0.5, -0.5, -0.5,    0.0, -1.0,  0.0,   1.0, 1.0,
-     0.5, -0.5,  0.5,    0.0, -1.0,  0.0,   1.0, 0.0,
-    -0.5, -0.5, -0.5,    0.0, -1.0,  0.0,   0.0, 1.0,
-     0.5, -0.5,  0.5,    0.0, -1.0,  0.0,   1.0, 0.0,
-    -0.5, -0.5,  0.5,    0.0, -1.0,  0.0,   0.0, 0.0,
-    // front (+z)
-    -0.5, -0.5,  0.5,    0.0,  0.0,  1.0,   0.0, 1.0,
-     0.5, -0.5,  0.5,    0.0,  0.0,  1.0,   1.0, 1.0,
-     0.5,  0.5,  0.5,    0.0,  0.0,  1.0,   1.0, 0.0,
-    -0.5, -0.5,  0.5,    0.0,  0.0,  1.0,   0.0, 1.0,
-     0.5,  0.5,  0.5,    0.0,  0.0,  1.0,   1.0, 0.0,
-    -0.5,  0.5,  0.5,    0.0,  0.0,  1.0,   0.0, 0.0,
-    // back (-z)
-     0.5, -0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 1.0,
-    -0.5, -0.5, -0.5,    0.0,  0.0, -1.0,   1.0, 1.0,
-    -0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   1.0, 0.0,
-     0.5, -0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 1.0,
-    -0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   1.0, 0.0,
-     0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 0.0,
-};
-
 vertex_layout: [3]D3D11_INPUT_ELEMENT_DESC = {
     { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 0 },
     { .SemanticName = "NORMAL", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 12 },
@@ -107,14 +61,6 @@ transforms: struct = {
     projection: mat4;
     view_position: vec3;     // the eye, in world space
     pad: f32;
-}
-
-// Draws the 36 vertices of the bound cube with `model`.
-draw_cube: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, t: *transforms, model: mat4) -> void = {
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
-    update_buffer(context, buffer, t, sizeof(transforms));
-    ID3D11DeviceContext_Draw(context, 36, 0);
 }
 
 // camera
@@ -274,29 +220,6 @@ load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [
     ID3D11DeviceContext_UpdateSubresource(context, cast(texture, *ID3D11Resource), 0, null, img.pixels, cast(img.width * 4, UINT), 0);
     ID3D11DeviceContext_GenerateMips(context, srv);
     return srv;
-}
-
-bind_texture: proc(context: *ID3D11DeviceContext, slot: UINT, srv: *ID3D11ShaderResourceView) -> void = {
-    views: [1]*ID3D11ShaderResourceView = { srv };
-    ID3D11DeviceContext_PSSetShaderResources(context, slot, 1, views[0]&);
-}
-
-// Draws `count` vertices of `buffer` (32-byte vertices) with `model`.
-draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: *transforms, buffer: *ID3D11Buffer, count: UINT, model: mat4) -> void = {
-    stride: UINT = 32;
-    offset: UINT = 0;
-    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
-    update_buffer(context, constants, t, sizeof(transforms));
-    ID3D11DeviceContext_Draw(context, count, 0);
-}
-
-// A texture cannot be read while it is bound as a target, so the slots are
-// emptied before drawing into one.
-unbind_textures: proc(context: *ID3D11DeviceContext) -> void = {
-    views: [8]*ID3D11ShaderResourceView = {};
-    ID3D11DeviceContext_PSSetShaderResources(context, 0, 8, views[0]&);
 }
 
 // A UV sphere of radius 1, indexed: `segments` slices around and as many

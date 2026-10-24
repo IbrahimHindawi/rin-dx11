@@ -94,14 +94,6 @@ transforms: struct = {
     pad: f32;
 }
 
-// Draws the 36 vertices of the bound cube with `model`.
-draw_cube: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, t: *transforms, model: mat4) -> void = {
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
-    update_buffer(context, buffer, t, sizeof(transforms));
-    ID3D11DeviceContext_Draw(context, 36, 0);
-}
-
 light_count: u32 = 32;
 
 point_light: struct = {
@@ -246,11 +238,6 @@ bind_constants: proc(context: *ID3D11DeviceContext, slot: UINT, buffer: *ID3D11B
     ID3D11DeviceContext_VSSetConstantBuffers(context, slot, 1, buffers[0]&);
     ID3D11DeviceContext_GSSetConstantBuffers(context, slot, 1, buffers[0]&);
     ID3D11DeviceContext_PSSetConstantBuffers(context, slot, 1, buffers[0]&);
-}
-
-bind_texture: proc(context: *ID3D11DeviceContext, slot: UINT, srv: *ID3D11ShaderResourceView) -> void = {
-    views: [1]*ID3D11ShaderResourceView = { srv };
-    ID3D11DeviceContext_PSSetShaderResources(context, slot, 1, views[0]&);
 }
 
 // Draws `count` vertices of `buffer` (32-byte vertices) with `model`.

@@ -76,12 +76,6 @@ cube_vertices: [288]f32 = {
      0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 0.0,
 };
 
-vertex_layout: [3]D3D11_INPUT_ELEMENT_DESC = {
-    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 0 },
-    { .SemanticName = "NORMAL", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 12 },
-    { .SemanticName = "TEXCOORD", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32_FLOAT, .AlignedByteOffset = 24 },
-};
-
 // Mirrors `cbuffer transforms` in the shaders, register for register.
 transforms: struct = {
     model: mat4;
@@ -90,14 +84,6 @@ transforms: struct = {
     projection: mat4;
     view_position: vec3;     // the eye, in world space
     pad: f32;
-}
-
-// Draws the 36 vertices of the bound cube with `model`.
-draw_cube: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, t: *transforms, model: mat4) -> void = {
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
-    update_buffer(context, buffer, t, sizeof(transforms));
-    ID3D11DeviceContext_Draw(context, 36, 0);
 }
 
 ssao_constants: struct = {

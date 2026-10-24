@@ -95,14 +95,6 @@ transforms: struct = {
     pad: f32;
 }
 
-// Draws the 36 vertices of the bound cube with `model`.
-draw_cube: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, t: *transforms, model: mat4) -> void = {
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
-    update_buffer(context, buffer, t, sizeof(transforms));
-    ID3D11DeviceContext_Draw(context, 36, 0);
-}
-
 // camera
 cam: camera = {};
 last_cursor: POINT = {};
@@ -231,35 +223,6 @@ bind_constants: proc(context: *ID3D11DeviceContext, slot: UINT, buffer: *ID3D11B
     ID3D11DeviceContext_VSSetConstantBuffers(context, slot, 1, buffers[0]&);
     ID3D11DeviceContext_GSSetConstantBuffers(context, slot, 1, buffers[0]&);
     ID3D11DeviceContext_PSSetConstantBuffers(context, slot, 1, buffers[0]&);
-}
-
-// utility function for loading a 2D texture from file, with a full mip chain
-// --------------------------------------------------------------------------
-// `srgb`: the file stores colours, gamma encoded, and sampling should decode
-// them to linear. Data such as normals or roughness is linear already.
-load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [*]const char, srgb: b32) -> *ID3D11ShaderResourceView = {
-    img: image = image_load(path);
-    if (img.pixels == null) {
-        printf("Texture failed to load at path: %s\n", path);
-        exit(1);
-    }
-    desc: D3D11_TEXTURE2D_DESC = {};
-    desc.Width = cast(img.width, UINT);
-    desc.Height = cast(img.height, UINT);
-    desc.MipLevels = 0;   // the whole chain
-    desc.ArraySize = 1;
-    desc.Format = srgb ? DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    // Generating mips draws into the texture, so it is a render target too.
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
-    texture: *ID3D11Texture2D = null;
-    srv: *ID3D11ShaderResourceView = null;
-    ID3D11Device_CreateTexture2D(device, desc&, null, texture&);
-    ID3D11Device_CreateShaderResourceView(device, cast(texture, *ID3D11Resource), null, srv&);
-    ID3D11DeviceContext_UpdateSubresource(context, cast(texture, *ID3D11Resource), 0, null, img.pixels, cast(img.width * 4, UINT), 0);
-    ID3D11DeviceContext_GenerateMips(context, srv);
-    return srv;
 }
 
 bind_texture: proc(context: *ID3D11DeviceContext, slot: UINT, srv: *ID3D11ShaderResourceView) -> void = {
