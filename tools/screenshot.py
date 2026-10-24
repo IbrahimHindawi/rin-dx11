@@ -64,10 +64,13 @@ def shoot(spec):
     if hwnd is None:
         out = proc.stdout.read().decode(errors="replace") if proc.poll() is not None else "no window"
         print(f"FAIL {name}: {out.strip()[:300]}"); proc.kill(); return
+    # A lesson reads each key once per frame, so keys sent while it is still
+    # starting up, or within one frame, would count as a single press.
+    if keys: time.sleep(1.5)
     for k in keys:
         vk = 0x09 if k == "T" else ord(k)
         user32.PostMessageW(hwnd, WM_KEYDOWN, vk, 0); user32.PostMessageW(hwnd, WM_KEYUP, vk, 0)
-        time.sleep(0.2)
+        time.sleep(0.3)
     time.sleep(wait)
     if proc.poll() is not None:
         print(f"FAIL {name}: exited early: {proc.stdout.read().decode(errors='replace').strip()[:300]}"); return
