@@ -1,0 +1,647 @@
+// The slice of windows.h, d3d11.h, dxgi.h, d3dcompiler.h and wincodec.h that
+// the lessons touch, declared so rin can check every call. This file plays
+// the part glad and GLFW's headers play for LearnOpenGL.
+//
+// Nothing here emits C. `struct[external]` names a type the header already
+// defines, and only the fields a lesson writes are listed; field access lowers
+// to C's own struct, so the offsets are always the header's. A global with no
+// initializer is C-owned too: `WM_QUIT: const UINT;` lets rin say `WM_QUIT`
+// and lowers to the header's macro.
+
+#define WIN32_LEAN_AND_MEAN
+#define COBJMACROS
+cinclude "windows.h"
+cinclude "d3d11.h"
+cinclude "dxgi.h"
+cinclude "d3dcompiler.h"
+cinclude "wincodec.h"
+
+// -- Scalars and handles -----------------------------------------------------
+
+BOOL: alias[external] = i32;
+BYTE: alias[external] = u8;
+WORD: alias[external] = u16;
+SHORT: alias[external] = i16;
+DWORD: alias[external] = u32;
+UINT: alias[external] = u32;
+UINT8: alias[external] = u8;
+INT: alias[external] = i32;
+LONG: alias[external] = i32;
+ULONG: alias[external] = u32;
+FLOAT: alias[external] = f32;
+HRESULT: alias[external] = i32;
+ATOM: alias[external] = u16;
+LPARAM: alias[external] = i64;
+WPARAM: alias[external] = u64;
+LRESULT: alias[external] = i64;
+SIZE_T: alias[external] = usize;
+WCHAR: alias[external] = u16;
+
+HANDLE: alias[external] = *void;
+HWND: alias[external] = *void;
+HINSTANCE: alias[external] = *void;
+HMODULE: alias[external] = *void;
+HCURSOR: alias[external] = *void;
+HICON: alias[external] = *void;
+HBRUSH: alias[external] = *void;
+HMENU: alias[external] = *void;
+
+GUID: struct[external] = {}
+IID: alias[external] = GUID;
+CLSID: alias[external] = GUID;
+
+// -- Windows -----------------------------------------------------------------
+
+RECT: struct[external, no_layout_check] = {
+    left: LONG;
+    top: LONG;
+    right: LONG;
+    bottom: LONG;
+}
+
+POINT: struct[external, no_layout_check] = {
+    x: LONG;
+    y: LONG;
+}
+
+MSG: struct[external, no_layout_check] = {
+    message: UINT;
+}
+
+LARGE_INTEGER: struct[external, no_layout_check] = {
+    QuadPart: i64;
+}
+
+WNDCLASSA: struct[external, no_layout_check] = {
+    // CALLBACK is part of the type: a window proc called with the wrong
+    // convention corrupts the stack.
+    lpfnWndProc: *proc[callconv(CALLBACK)](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
+    hInstance: HINSTANCE;
+    hCursor: HCURSOR;
+    lpszClassName: [*]const char;
+}
+
+GetModuleHandleA: proc[external](name: [*]const char) -> HMODULE = {}
+GetModuleFileNameA: proc[external](module: HMODULE, out: [*]char, size: DWORD) -> DWORD = {}
+GetFileAttributesA: proc[external](path: [*]const char) -> DWORD = {}
+LoadCursorA: proc[external](instance: HINSTANCE, name: [*]const char) -> HCURSOR = {}
+RegisterClassA: proc[external](window_class: *const WNDCLASSA) -> ATOM = {}
+AdjustWindowRect: proc[external](rect: *RECT, style: DWORD, menu: BOOL) -> BOOL = {}
+CreateWindowExA: proc[external](ex_style: DWORD, class_name: [*]const char, title: [*]const char, style: DWORD, x: i32, y: i32, w: i32, h: i32, parent: HWND, menu: HMENU, instance: HINSTANCE, param: *void) -> HWND = {}
+DestroyWindow: proc[external](hwnd: HWND) -> BOOL = {}
+ShowWindow: proc[external](hwnd: HWND, cmd: i32) -> BOOL = {}
+SetWindowTextA: proc[external](hwnd: HWND, text: [*]const char) -> BOOL = {}
+PeekMessageA: proc[external](msg: *MSG, hwnd: HWND, min: UINT, max: UINT, remove: UINT) -> BOOL = {}
+TranslateMessage: proc[external](msg: *const MSG) -> BOOL = {}
+DispatchMessageA: proc[external](msg: *const MSG) -> LRESULT = {}
+DefWindowProcA: proc[external](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {}
+PostQuitMessage: proc[external](code: i32) -> void = {}
+GetAsyncKeyState: proc[external](key: i32) -> SHORT = {}
+GetForegroundWindow: proc[external]() -> HWND = {}
+GetCursorPos: proc[external](point: *POINT) -> BOOL = {}
+SetProcessDPIAware: proc[external]() -> BOOL = {}
+QueryPerformanceFrequency: proc[external](out: *LARGE_INTEGER) -> BOOL = {}
+QueryPerformanceCounter: proc[external](out: *LARGE_INTEGER) -> BOOL = {}
+MultiByteToWideChar: proc[external](code_page: UINT, flags: DWORD, text: [*]const char, length: i32, out: [*]WCHAR, out_length: i32) -> i32 = {}
+CoInitializeEx: proc[external](reserved: *void, flags: DWORD) -> HRESULT = {}
+CoCreateInstance: proc[external](clsid: *const CLSID, outer: *void, context: DWORD, iid: *const IID, out: **void) -> HRESULT = {}
+
+WS_OVERLAPPEDWINDOW: const DWORD;
+WS_THICKFRAME: const DWORD;
+WS_MAXIMIZEBOX: const DWORD;
+WS_VISIBLE: const DWORD;
+CW_USEDEFAULT: const i32;
+SW_SHOW: const i32;
+PM_REMOVE: const UINT;
+IDC_ARROW: const [*]const char;
+INVALID_FILE_ATTRIBUTES: const DWORD;
+FILE_ATTRIBUTE_DIRECTORY: const DWORD;
+CP_UTF8: const UINT;
+COINIT_MULTITHREADED: const DWORD;
+CLSCTX_INPROC_SERVER: const DWORD;
+GENERIC_READ: const DWORD;
+GENERIC_WRITE: const DWORD;
+
+WM_QUIT: const UINT;
+WM_DESTROY: const UINT;
+WM_KEYDOWN: const UINT;
+WM_KEYUP: const UINT;
+WM_MOUSEMOVE: const UINT;
+WM_RBUTTONDOWN: const UINT;
+WM_RBUTTONUP: const UINT;
+WM_MOUSEWHEEL: const UINT;
+VK_ESCAPE: const i32;
+VK_RBUTTON: const i32;
+VK_TAB: const i32;
+VK_SPACE: const i32;
+VK_SHIFT: const i32;
+VK_UP: const i32;
+VK_DOWN: const i32;
+VK_LEFT: const i32;
+VK_RIGHT: const i32;
+
+// -- DXGI and D3D11 enums ------------------------------------------------------
+
+DXGI_FORMAT: enum[external] = {
+    DXGI_FORMAT_UNKNOWN = 0,
+    DXGI_FORMAT_R32G32B32A32_FLOAT = 2,
+    DXGI_FORMAT_R32G32B32_FLOAT = 6,
+    DXGI_FORMAT_R16G16B16A16_FLOAT = 10,
+    DXGI_FORMAT_R32G32_FLOAT = 16,
+    DXGI_FORMAT_R8G8B8A8_UNORM = 28,
+    DXGI_FORMAT_R8G8B8A8_UNORM_SRGB = 29,
+    DXGI_FORMAT_R16G16_FLOAT = 34,
+    DXGI_FORMAT_R32_TYPELESS = 39,
+    DXGI_FORMAT_D32_FLOAT = 40,
+    DXGI_FORMAT_R32_FLOAT = 41,
+    DXGI_FORMAT_R32_UINT = 42,
+    DXGI_FORMAT_R24G8_TYPELESS = 44,
+    DXGI_FORMAT_D24_UNORM_S8_UINT = 45,
+    DXGI_FORMAT_R24_UNORM_X8_TYPELESS = 46,
+    DXGI_FORMAT_R16_FLOAT = 54,
+    DXGI_FORMAT_R8_UNORM = 61,
+}
+
+DXGI_SWAP_EFFECT: enum[external] = {
+    DXGI_SWAP_EFFECT_DISCARD = 0,
+    DXGI_SWAP_EFFECT_FLIP_DISCARD = 4,
+}
+
+D3D_DRIVER_TYPE: enum[external] = {
+    D3D_DRIVER_TYPE_HARDWARE = 1,
+}
+
+D3D_FEATURE_LEVEL: enum[external] = {
+    D3D_FEATURE_LEVEL_11_0 = 45056,
+}
+
+D3D11_USAGE: enum[external] = {
+    D3D11_USAGE_DEFAULT = 0,
+    D3D11_USAGE_IMMUTABLE = 1,
+    D3D11_USAGE_DYNAMIC = 2,
+    D3D11_USAGE_STAGING = 3,
+}
+
+D3D11_MAP: enum[external] = {
+    D3D11_MAP_READ = 1,
+    D3D11_MAP_WRITE_DISCARD = 4,
+}
+
+D3D11_INPUT_CLASSIFICATION: enum[external] = {
+    D3D11_INPUT_PER_VERTEX_DATA = 0,
+    D3D11_INPUT_PER_INSTANCE_DATA = 1,
+}
+
+D3D11_PRIMITIVE_TOPOLOGY: enum[external] = {
+    D3D11_PRIMITIVE_TOPOLOGY_POINTLIST = 1,
+    D3D11_PRIMITIVE_TOPOLOGY_LINELIST = 2,
+    D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST = 4,
+    D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP = 5,
+}
+
+D3D11_COMPARISON_FUNC: enum[external] = {
+    D3D11_COMPARISON_NEVER = 1,
+    D3D11_COMPARISON_LESS = 2,
+    D3D11_COMPARISON_EQUAL = 3,
+    D3D11_COMPARISON_LESS_EQUAL = 4,
+    D3D11_COMPARISON_GREATER = 5,
+    D3D11_COMPARISON_NOT_EQUAL = 6,
+    D3D11_COMPARISON_GREATER_EQUAL = 7,
+    D3D11_COMPARISON_ALWAYS = 8,
+}
+
+D3D11_DEPTH_WRITE_MASK: enum[external] = {
+    D3D11_DEPTH_WRITE_MASK_ZERO = 0,
+    D3D11_DEPTH_WRITE_MASK_ALL = 1,
+}
+
+D3D11_STENCIL_OP: enum[external] = {
+    D3D11_STENCIL_OP_KEEP = 1,
+    D3D11_STENCIL_OP_ZERO = 2,
+    D3D11_STENCIL_OP_REPLACE = 3,
+    D3D11_STENCIL_OP_INCR_SAT = 4,
+}
+
+D3D11_CULL_MODE: enum[external] = {
+    D3D11_CULL_NONE = 1,
+    D3D11_CULL_FRONT = 2,
+    D3D11_CULL_BACK = 3,
+}
+
+D3D11_FILL_MODE: enum[external] = {
+    D3D11_FILL_WIREFRAME = 2,
+    D3D11_FILL_SOLID = 3,
+}
+
+D3D11_FILTER: enum[external] = {
+    D3D11_FILTER_MIN_MAG_MIP_POINT = 0,
+    D3D11_FILTER_MIN_MAG_MIP_LINEAR = 21,
+    D3D11_FILTER_ANISOTROPIC = 85,
+    D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT = 148,
+}
+
+D3D11_TEXTURE_ADDRESS_MODE: enum[external] = {
+    D3D11_TEXTURE_ADDRESS_WRAP = 1,
+    D3D11_TEXTURE_ADDRESS_MIRROR = 2,
+    D3D11_TEXTURE_ADDRESS_CLAMP = 3,
+    D3D11_TEXTURE_ADDRESS_BORDER = 4,
+}
+
+D3D11_BLEND: enum[external] = {
+    D3D11_BLEND_ZERO = 1,
+    D3D11_BLEND_ONE = 2,
+    D3D11_BLEND_SRC_ALPHA = 5,
+    D3D11_BLEND_INV_SRC_ALPHA = 6,
+}
+
+D3D11_BLEND_OP: enum[external] = {
+    D3D11_BLEND_OP_ADD = 1,
+}
+
+D3D11_SRV_DIMENSION: enum[external] = {
+    D3D11_SRV_DIMENSION_TEXTURE2D = 4,
+    D3D11_SRV_DIMENSION_TEXTURE2DARRAY = 5,
+    D3D11_SRV_DIMENSION_TEXTURECUBE = 9,
+}
+
+D3D11_RTV_DIMENSION: enum[external] = {
+    D3D11_RTV_DIMENSION_TEXTURE2D = 4,
+    D3D11_RTV_DIMENSION_TEXTURE2DARRAY = 5,
+}
+
+D3D11_DSV_DIMENSION: enum[external] = {
+    D3D11_DSV_DIMENSION_TEXTURE2D = 3,
+    D3D11_DSV_DIMENSION_TEXTURE2DARRAY = 4,
+    D3D11_DSV_DIMENSION_TEXTURE2DMS = 5,
+}
+
+D3D11_BIND_VERTEX_BUFFER: const UINT;
+D3D11_BIND_INDEX_BUFFER: const UINT;
+D3D11_BIND_CONSTANT_BUFFER: const UINT;
+D3D11_BIND_SHADER_RESOURCE: const UINT;
+D3D11_BIND_RENDER_TARGET: const UINT;
+D3D11_BIND_DEPTH_STENCIL: const UINT;
+D3D11_CPU_ACCESS_WRITE: const UINT;
+D3D11_CPU_ACCESS_READ: const UINT;
+D3D11_RESOURCE_MISC_GENERATE_MIPS: const UINT;
+D3D11_RESOURCE_MISC_TEXTURECUBE: const UINT;
+D3D11_CLEAR_DEPTH: const UINT;
+D3D11_CLEAR_STENCIL: const UINT;
+D3D11_CREATE_DEVICE_DEBUG: const UINT;
+D3D11_SDK_VERSION: const UINT;
+D3D11_COLOR_WRITE_ENABLE_ALL: const UINT8;
+D3D11_DEFAULT_STENCIL_READ_MASK: const UINT8;
+D3D11_DEFAULT_STENCIL_WRITE_MASK: const UINT8;
+D3D11_APPEND_ALIGNED_ELEMENT: const UINT;
+D3D11_FLOAT32_MAX: const f32;
+DXGI_USAGE_RENDER_TARGET_OUTPUT: const UINT;
+D3DCOMPILE_ENABLE_STRICTNESS: const UINT;
+D3DCOMPILE_DEBUG: const UINT;
+// Resolves `#include "x"` relative to the file being compiled.
+D3D_COMPILE_STANDARD_FILE_INCLUDE: const *ID3DInclude;
+
+// -- D3D11 COM objects. Only ever held behind a pointer. -----------------------
+
+IDXGISwapChain: struct[external] = {}
+ID3D11Device: struct[external] = {}
+ID3D11DeviceContext: struct[external] = {}
+ID3D11Resource: struct[external] = {}
+ID3D11Buffer: struct[external] = {}
+ID3D11Texture2D: struct[external] = {}
+ID3D11RenderTargetView: struct[external] = {}
+ID3D11DepthStencilView: struct[external] = {}
+ID3D11ShaderResourceView: struct[external] = {}
+ID3D11SamplerState: struct[external] = {}
+ID3D11InputLayout: struct[external] = {}
+ID3D11VertexShader: struct[external] = {}
+ID3D11GeometryShader: struct[external] = {}
+ID3D11PixelShader: struct[external] = {}
+ID3D11RasterizerState: struct[external] = {}
+ID3D11DepthStencilState: struct[external] = {}
+ID3D11BlendState: struct[external] = {}
+ID3D11ClassLinkage: struct[external] = {}
+ID3D11ClassInstance: struct[external] = {}
+ID3DBlob: struct[external] = {}
+ID3DInclude: struct[external] = {}
+D3D_SHADER_MACRO: struct[external] = {}
+
+IID_ID3D11Texture2D: const IID;
+
+// -- D3D11 descriptions. Only the fields a lesson sets. -------------------------
+
+DXGI_SAMPLE_DESC: struct[external, no_layout_check] = {
+    Count: UINT;
+    Quality: UINT;
+}
+
+DXGI_MODE_DESC: struct[external, no_layout_check] = {
+    Width: UINT;
+    Height: UINT;
+    Format: DXGI_FORMAT;
+}
+
+DXGI_SWAP_CHAIN_DESC: struct[external, no_layout_check] = {
+    BufferDesc: DXGI_MODE_DESC;
+    SampleDesc: DXGI_SAMPLE_DESC;
+    BufferUsage: UINT;
+    BufferCount: UINT;
+    OutputWindow: HWND;
+    Windowed: BOOL;
+    SwapEffect: DXGI_SWAP_EFFECT;
+}
+
+D3D11_BUFFER_DESC: struct[external, no_layout_check] = {
+    ByteWidth: UINT;
+    Usage: D3D11_USAGE;
+    BindFlags: UINT;
+    CPUAccessFlags: UINT;
+}
+
+D3D11_SUBRESOURCE_DATA: struct[external, no_layout_check] = {
+    pSysMem: *const void;
+    SysMemPitch: UINT;
+}
+
+D3D11_MAPPED_SUBRESOURCE: struct[external, no_layout_check] = {
+    pData: *void;
+    RowPitch: UINT;
+}
+
+D3D11_TEXTURE2D_DESC: struct[external, no_layout_check] = {
+    Width: UINT;
+    Height: UINT;
+    MipLevels: UINT;
+    ArraySize: UINT;
+    Format: DXGI_FORMAT;
+    SampleDesc: DXGI_SAMPLE_DESC;
+    Usage: D3D11_USAGE;
+    BindFlags: UINT;
+    CPUAccessFlags: UINT;
+    MiscFlags: UINT;
+}
+
+D3D11_TEX2D_SRV: struct[external, no_layout_check] = {
+    MostDetailedMip: UINT;
+    MipLevels: UINT;
+}
+
+D3D11_TEX2D_ARRAY_SRV: struct[external, no_layout_check] = {
+    MostDetailedMip: UINT;
+    MipLevels: UINT;
+    FirstArraySlice: UINT;
+    ArraySize: UINT;
+}
+
+D3D11_TEXCUBE_SRV: struct[external, no_layout_check] = {
+    MostDetailedMip: UINT;
+    MipLevels: UINT;
+}
+
+// Texture2D, Texture2DArray and TextureCube share an anonymous union in the C
+// header. Naming each directly is what C does too.
+D3D11_SHADER_RESOURCE_VIEW_DESC: struct[external, no_layout_check] = {
+    Format: DXGI_FORMAT;
+    ViewDimension: D3D11_SRV_DIMENSION;
+    Texture2D: D3D11_TEX2D_SRV;
+    Texture2DArray: D3D11_TEX2D_ARRAY_SRV;
+    TextureCube: D3D11_TEXCUBE_SRV;
+}
+
+D3D11_TEX2D_RTV: struct[external, no_layout_check] = {
+    MipSlice: UINT;
+}
+
+D3D11_TEX2D_ARRAY_RTV: struct[external, no_layout_check] = {
+    MipSlice: UINT;
+    FirstArraySlice: UINT;
+    ArraySize: UINT;
+}
+
+D3D11_RENDER_TARGET_VIEW_DESC: struct[external, no_layout_check] = {
+    Format: DXGI_FORMAT;
+    ViewDimension: D3D11_RTV_DIMENSION;
+    Texture2D: D3D11_TEX2D_RTV;
+    Texture2DArray: D3D11_TEX2D_ARRAY_RTV;
+}
+
+D3D11_TEX2D_DSV: struct[external, no_layout_check] = {
+    MipSlice: UINT;
+}
+
+D3D11_TEX2D_ARRAY_DSV: struct[external, no_layout_check] = {
+    MipSlice: UINT;
+    FirstArraySlice: UINT;
+    ArraySize: UINT;
+}
+
+D3D11_DEPTH_STENCIL_VIEW_DESC: struct[external, no_layout_check] = {
+    Format: DXGI_FORMAT;
+    ViewDimension: D3D11_DSV_DIMENSION;
+    Texture2D: D3D11_TEX2D_DSV;
+    Texture2DArray: D3D11_TEX2D_ARRAY_DSV;
+}
+
+D3D11_INPUT_ELEMENT_DESC: struct[external, no_layout_check] = {
+    SemanticName: [*]const char;
+    SemanticIndex: UINT;
+    Format: DXGI_FORMAT;
+    InputSlot: UINT;
+    AlignedByteOffset: UINT;
+    InputSlotClass: D3D11_INPUT_CLASSIFICATION;
+    InstanceDataStepRate: UINT;
+}
+
+D3D11_SAMPLER_DESC: struct[external, no_layout_check] = {
+    Filter: D3D11_FILTER;
+    AddressU: D3D11_TEXTURE_ADDRESS_MODE;
+    AddressV: D3D11_TEXTURE_ADDRESS_MODE;
+    AddressW: D3D11_TEXTURE_ADDRESS_MODE;
+    MaxAnisotropy: UINT;
+    ComparisonFunc: D3D11_COMPARISON_FUNC;
+    BorderColor: [4]FLOAT;
+    MaxLOD: FLOAT;
+}
+
+D3D11_RASTERIZER_DESC: struct[external, no_layout_check] = {
+    FillMode: D3D11_FILL_MODE;
+    CullMode: D3D11_CULL_MODE;
+    FrontCounterClockwise: BOOL;
+    DepthBias: INT;
+    SlopeScaledDepthBias: FLOAT;
+    DepthClipEnable: BOOL;
+    MultisampleEnable: BOOL;
+}
+
+D3D11_DEPTH_STENCILOP_DESC: struct[external, no_layout_check] = {
+    StencilFailOp: D3D11_STENCIL_OP;
+    StencilDepthFailOp: D3D11_STENCIL_OP;
+    StencilPassOp: D3D11_STENCIL_OP;
+    StencilFunc: D3D11_COMPARISON_FUNC;
+}
+
+D3D11_DEPTH_STENCIL_DESC: struct[external, no_layout_check] = {
+    DepthEnable: BOOL;
+    DepthWriteMask: D3D11_DEPTH_WRITE_MASK;
+    DepthFunc: D3D11_COMPARISON_FUNC;
+    StencilEnable: BOOL;
+    StencilReadMask: UINT8;
+    StencilWriteMask: UINT8;
+    FrontFace: D3D11_DEPTH_STENCILOP_DESC;
+    BackFace: D3D11_DEPTH_STENCILOP_DESC;
+}
+
+D3D11_RENDER_TARGET_BLEND_DESC: struct[external, no_layout_check] = {
+    BlendEnable: BOOL;
+    SrcBlend: D3D11_BLEND;
+    DestBlend: D3D11_BLEND;
+    BlendOp: D3D11_BLEND_OP;
+    SrcBlendAlpha: D3D11_BLEND;
+    DestBlendAlpha: D3D11_BLEND;
+    BlendOpAlpha: D3D11_BLEND_OP;
+    RenderTargetWriteMask: UINT8;
+}
+
+D3D11_BLEND_DESC: struct[external, no_layout_check] = {
+    RenderTarget: [8]D3D11_RENDER_TARGET_BLEND_DESC;
+}
+
+D3D11_VIEWPORT: struct[external, no_layout_check] = {
+    TopLeftX: FLOAT;
+    TopLeftY: FLOAT;
+    Width: FLOAT;
+    Height: FLOAT;
+    MinDepth: FLOAT;
+    MaxDepth: FLOAT;
+}
+
+D3D11_BOX: struct[external, no_layout_check] = {
+    left: UINT;
+    top: UINT;
+    front: UINT;
+    right: UINT;
+    bottom: UINT;
+    back: UINT;
+}
+
+// -- D3D11 calls. COBJMACROS turns each `Interface_Method(This, ...)` into a
+//    call through the vtable. ---------------------------------------------------
+
+D3D11CreateDeviceAndSwapChain: proc[external](adapter: *void, driver: D3D_DRIVER_TYPE, software: HMODULE, flags: UINT, levels: *const D3D_FEATURE_LEVEL, level_count: UINT, sdk: UINT, desc: *const DXGI_SWAP_CHAIN_DESC, swap_chain: **IDXGISwapChain, device: **ID3D11Device, level: *D3D_FEATURE_LEVEL, context: **ID3D11DeviceContext) -> HRESULT = {}
+D3DCompile: proc[external](source: *const void, size: usize, name: [*]const char, defines: *const D3D_SHADER_MACRO, include: *ID3DInclude, entry: [*]const char, target: [*]const char, flags1: UINT, flags2: UINT, code: **ID3DBlob, errors: **ID3DBlob) -> HRESULT = {}
+
+IDXGISwapChain_GetBuffer: proc[external](This: *IDXGISwapChain, index: UINT, iid: *const IID, out: **void) -> HRESULT = {}
+IDXGISwapChain_Present: proc[external](This: *IDXGISwapChain, interval: UINT, flags: UINT) -> HRESULT = {}
+IDXGISwapChain_Release: proc[external](This: *IDXGISwapChain) -> ULONG = {}
+
+ID3D10Blob_GetBufferPointer: proc[external](This: *ID3DBlob) -> *void = {}
+ID3D10Blob_GetBufferSize: proc[external](This: *ID3DBlob) -> usize = {}
+ID3D10Blob_Release: proc[external](This: *ID3DBlob) -> ULONG = {}
+
+ID3D11Device_CreateBuffer: proc[external](This: *ID3D11Device, desc: *const D3D11_BUFFER_DESC, data: *const D3D11_SUBRESOURCE_DATA, out: **ID3D11Buffer) -> HRESULT = {}
+ID3D11Device_CreateTexture2D: proc[external](This: *ID3D11Device, desc: *const D3D11_TEXTURE2D_DESC, data: *const D3D11_SUBRESOURCE_DATA, out: **ID3D11Texture2D) -> HRESULT = {}
+ID3D11Device_CreateShaderResourceView: proc[external](This: *ID3D11Device, resource: *ID3D11Resource, desc: *const D3D11_SHADER_RESOURCE_VIEW_DESC, out: **ID3D11ShaderResourceView) -> HRESULT = {}
+ID3D11Device_CreateRenderTargetView: proc[external](This: *ID3D11Device, resource: *ID3D11Resource, desc: *const D3D11_RENDER_TARGET_VIEW_DESC, out: **ID3D11RenderTargetView) -> HRESULT = {}
+ID3D11Device_CreateDepthStencilView: proc[external](This: *ID3D11Device, resource: *ID3D11Resource, desc: *const D3D11_DEPTH_STENCIL_VIEW_DESC, out: **ID3D11DepthStencilView) -> HRESULT = {}
+ID3D11Device_CreateSamplerState: proc[external](This: *ID3D11Device, desc: *const D3D11_SAMPLER_DESC, out: **ID3D11SamplerState) -> HRESULT = {}
+ID3D11Device_CreateRasterizerState: proc[external](This: *ID3D11Device, desc: *const D3D11_RASTERIZER_DESC, out: **ID3D11RasterizerState) -> HRESULT = {}
+ID3D11Device_CreateDepthStencilState: proc[external](This: *ID3D11Device, desc: *const D3D11_DEPTH_STENCIL_DESC, out: **ID3D11DepthStencilState) -> HRESULT = {}
+ID3D11Device_CreateBlendState: proc[external](This: *ID3D11Device, desc: *const D3D11_BLEND_DESC, out: **ID3D11BlendState) -> HRESULT = {}
+ID3D11Device_CreateInputLayout: proc[external](This: *ID3D11Device, elements: [*]const D3D11_INPUT_ELEMENT_DESC, count: UINT, code: *const void, size: usize, out: **ID3D11InputLayout) -> HRESULT = {}
+ID3D11Device_CreateVertexShader: proc[external](This: *ID3D11Device, code: *const void, size: usize, linkage: *ID3D11ClassLinkage, out: **ID3D11VertexShader) -> HRESULT = {}
+ID3D11Device_CreateGeometryShader: proc[external](This: *ID3D11Device, code: *const void, size: usize, linkage: *ID3D11ClassLinkage, out: **ID3D11GeometryShader) -> HRESULT = {}
+ID3D11Device_CreatePixelShader: proc[external](This: *ID3D11Device, code: *const void, size: usize, linkage: *ID3D11ClassLinkage, out: **ID3D11PixelShader) -> HRESULT = {}
+
+ID3D11DeviceContext_ClearRenderTargetView: proc[external](This: *ID3D11DeviceContext, view: *ID3D11RenderTargetView, rgba: *const FLOAT) -> void = {}
+ID3D11DeviceContext_ClearDepthStencilView: proc[external](This: *ID3D11DeviceContext, view: *ID3D11DepthStencilView, flags: UINT, depth: FLOAT, stencil: UINT8) -> void = {}
+ID3D11DeviceContext_OMSetRenderTargets: proc[external](This: *ID3D11DeviceContext, count: UINT, views: **ID3D11RenderTargetView, depth: *ID3D11DepthStencilView) -> void = {}
+ID3D11DeviceContext_OMSetDepthStencilState: proc[external](This: *ID3D11DeviceContext, state: *ID3D11DepthStencilState, stencil_ref: UINT) -> void = {}
+ID3D11DeviceContext_OMSetBlendState: proc[external](This: *ID3D11DeviceContext, state: *ID3D11BlendState, factor: *const FLOAT, mask: UINT) -> void = {}
+ID3D11DeviceContext_RSSetState: proc[external](This: *ID3D11DeviceContext, state: *ID3D11RasterizerState) -> void = {}
+ID3D11DeviceContext_RSSetViewports: proc[external](This: *ID3D11DeviceContext, count: UINT, viewports: *const D3D11_VIEWPORT) -> void = {}
+ID3D11DeviceContext_IASetInputLayout: proc[external](This: *ID3D11DeviceContext, layout: *ID3D11InputLayout) -> void = {}
+ID3D11DeviceContext_IASetPrimitiveTopology: proc[external](This: *ID3D11DeviceContext, topology: D3D11_PRIMITIVE_TOPOLOGY) -> void = {}
+ID3D11DeviceContext_IASetVertexBuffers: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, buffers: **ID3D11Buffer, strides: *const UINT, offsets: *const UINT) -> void = {}
+ID3D11DeviceContext_IASetIndexBuffer: proc[external](This: *ID3D11DeviceContext, buffer: *ID3D11Buffer, format: DXGI_FORMAT, offset: UINT) -> void = {}
+ID3D11DeviceContext_VSSetShader: proc[external](This: *ID3D11DeviceContext, shader: *ID3D11VertexShader, instances: **ID3D11ClassInstance, count: UINT) -> void = {}
+ID3D11DeviceContext_GSSetShader: proc[external](This: *ID3D11DeviceContext, shader: *ID3D11GeometryShader, instances: **ID3D11ClassInstance, count: UINT) -> void = {}
+ID3D11DeviceContext_PSSetShader: proc[external](This: *ID3D11DeviceContext, shader: *ID3D11PixelShader, instances: **ID3D11ClassInstance, count: UINT) -> void = {}
+ID3D11DeviceContext_VSSetConstantBuffers: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, buffers: **ID3D11Buffer) -> void = {}
+ID3D11DeviceContext_GSSetConstantBuffers: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, buffers: **ID3D11Buffer) -> void = {}
+ID3D11DeviceContext_PSSetConstantBuffers: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, buffers: **ID3D11Buffer) -> void = {}
+ID3D11DeviceContext_VSSetShaderResources: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, views: **ID3D11ShaderResourceView) -> void = {}
+ID3D11DeviceContext_PSSetShaderResources: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, views: **ID3D11ShaderResourceView) -> void = {}
+ID3D11DeviceContext_PSSetSamplers: proc[external](This: *ID3D11DeviceContext, slot: UINT, count: UINT, samplers: **ID3D11SamplerState) -> void = {}
+ID3D11DeviceContext_Draw: proc[external](This: *ID3D11DeviceContext, count: UINT, first: UINT) -> void = {}
+ID3D11DeviceContext_DrawIndexed: proc[external](This: *ID3D11DeviceContext, count: UINT, first: UINT, base: INT) -> void = {}
+ID3D11DeviceContext_DrawInstanced: proc[external](This: *ID3D11DeviceContext, count: UINT, instances: UINT, first: UINT, first_instance: UINT) -> void = {}
+ID3D11DeviceContext_DrawIndexedInstanced: proc[external](This: *ID3D11DeviceContext, count: UINT, instances: UINT, first: UINT, base: INT, first_instance: UINT) -> void = {}
+ID3D11DeviceContext_Map: proc[external](This: *ID3D11DeviceContext, resource: *ID3D11Resource, sub: UINT, type: D3D11_MAP, flags: UINT, out: *D3D11_MAPPED_SUBRESOURCE) -> HRESULT = {}
+ID3D11DeviceContext_Unmap: proc[external](This: *ID3D11DeviceContext, resource: *ID3D11Resource, sub: UINT) -> void = {}
+ID3D11DeviceContext_UpdateSubresource: proc[external](This: *ID3D11DeviceContext, resource: *ID3D11Resource, sub: UINT, box: *const D3D11_BOX, data: *const void, row_pitch: UINT, depth_pitch: UINT) -> void = {}
+ID3D11DeviceContext_CopyResource: proc[external](This: *ID3D11DeviceContext, dst: *ID3D11Resource, src: *ID3D11Resource) -> void = {}
+ID3D11DeviceContext_ResolveSubresource: proc[external](This: *ID3D11DeviceContext, dst: *ID3D11Resource, dst_sub: UINT, src: *ID3D11Resource, src_sub: UINT, format: DXGI_FORMAT) -> void = {}
+ID3D11DeviceContext_GenerateMips: proc[external](This: *ID3D11DeviceContext, view: *ID3D11ShaderResourceView) -> void = {}
+
+ID3D11Texture2D_Release: proc[external](This: *ID3D11Texture2D) -> ULONG = {}
+ID3D11RenderTargetView_Release: proc[external](This: *ID3D11RenderTargetView) -> ULONG = {}
+
+// -- WIC: decoding .png/.jpg, and writing the --shot capture -------------------
+
+IWICImagingFactory: struct[external] = {}
+IWICBitmapDecoder: struct[external] = {}
+IWICBitmapFrameDecode: struct[external] = {}
+IWICBitmapSource: struct[external] = {}
+IWICFormatConverter: struct[external] = {}
+IWICPalette: struct[external] = {}
+IWICStream: struct[external] = {}
+IWICBitmapEncoder: struct[external] = {}
+IWICBitmapFrameEncode: struct[external] = {}
+IPropertyBag2: struct[external] = {}
+IStream: struct[external] = {}
+WICRect: struct[external] = {}
+
+CLSID_WICImagingFactory: const CLSID;
+IID_IWICImagingFactory: const IID;
+GUID_WICPixelFormat32bppRGBA: const GUID;
+GUID_WICPixelFormat32bppBGRA: const GUID;
+GUID_ContainerFormatPng: const GUID;
+
+WICDecodeOptions: enum[external] = {
+    WICDecodeMetadataCacheOnDemand = 0,
+}
+
+WICBitmapDitherType: enum[external] = {
+    WICBitmapDitherTypeNone = 0,
+}
+
+WICBitmapPaletteType: enum[external] = {
+    WICBitmapPaletteTypeCustom = 0,
+}
+
+WICBitmapEncoderCacheOption: enum[external] = {
+    WICBitmapEncoderNoCache = 2,
+}
+
+IWICImagingFactory_CreateDecoderFromFilename: proc[external](This: *IWICImagingFactory, path: [*]const WCHAR, vendor: *const GUID, access: DWORD, options: WICDecodeOptions, out: **IWICBitmapDecoder) -> HRESULT = {}
+IWICImagingFactory_CreateFormatConverter: proc[external](This: *IWICImagingFactory, out: **IWICFormatConverter) -> HRESULT = {}
+IWICImagingFactory_CreateStream: proc[external](This: *IWICImagingFactory, out: **IWICStream) -> HRESULT = {}
+IWICImagingFactory_CreateEncoder: proc[external](This: *IWICImagingFactory, container: *const GUID, vendor: *const GUID, out: **IWICBitmapEncoder) -> HRESULT = {}
+IWICBitmapDecoder_GetFrame: proc[external](This: *IWICBitmapDecoder, index: UINT, out: **IWICBitmapFrameDecode) -> HRESULT = {}
+IWICBitmapDecoder_Release: proc[external](This: *IWICBitmapDecoder) -> ULONG = {}
+IWICBitmapFrameDecode_Release: proc[external](This: *IWICBitmapFrameDecode) -> ULONG = {}
+IWICFormatConverter_Initialize: proc[external](This: *IWICFormatConverter, source: *IWICBitmapSource, format: *const GUID, dither: WICBitmapDitherType, palette: *IWICPalette, alpha_threshold: f64, palette_type: WICBitmapPaletteType) -> HRESULT = {}
+IWICFormatConverter_GetSize: proc[external](This: *IWICFormatConverter, w: *UINT, h: *UINT) -> HRESULT = {}
+IWICFormatConverter_CopyPixels: proc[external](This: *IWICFormatConverter, rect: *const WICRect, stride: UINT, size: UINT, out: [*]BYTE) -> HRESULT = {}
+IWICFormatConverter_Release: proc[external](This: *IWICFormatConverter) -> ULONG = {}
+IWICStream_InitializeFromFilename: proc[external](This: *IWICStream, path: [*]const WCHAR, access: DWORD) -> HRESULT = {}
+IWICStream_Release: proc[external](This: *IWICStream) -> ULONG = {}
+IWICBitmapEncoder_Initialize: proc[external](This: *IWICBitmapEncoder, stream: *IStream, cache: WICBitmapEncoderCacheOption) -> HRESULT = {}
+IWICBitmapEncoder_CreateNewFrame: proc[external](This: *IWICBitmapEncoder, out: **IWICBitmapFrameEncode, options: **IPropertyBag2) -> HRESULT = {}
+IWICBitmapEncoder_Commit: proc[external](This: *IWICBitmapEncoder) -> HRESULT = {}
+IWICBitmapEncoder_Release: proc[external](This: *IWICBitmapEncoder) -> ULONG = {}
+IWICBitmapFrameEncode_Initialize: proc[external](This: *IWICBitmapFrameEncode, options: *IPropertyBag2) -> HRESULT = {}
+IWICBitmapFrameEncode_SetSize: proc[external](This: *IWICBitmapFrameEncode, w: UINT, h: UINT) -> HRESULT = {}
+IWICBitmapFrameEncode_SetPixelFormat: proc[external](This: *IWICBitmapFrameEncode, format: *GUID) -> HRESULT = {}
+IWICBitmapFrameEncode_WritePixels: proc[external](This: *IWICBitmapFrameEncode, rows: UINT, stride: UINT, size: UINT, pixels: [*]BYTE) -> HRESULT = {}
+IWICBitmapFrameEncode_Commit: proc[external](This: *IWICBitmapFrameEncode) -> HRESULT = {}
+IWICBitmapFrameEncode_Release: proc[external](This: *IWICBitmapFrameEncode) -> ULONG = {}

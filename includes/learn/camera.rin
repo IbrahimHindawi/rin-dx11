@@ -1,0 +1,74 @@
+// A fly camera from yaw and pitch: LearnOpenGL's Camera class. Lessons feed
+// it keyboard, mouse and wheel input and ask it for a view matrix.
+
+import "../math.rin"
+
+camera_movement: enum = {
+    forward,
+    backward,
+    left,
+    right,
+    up,
+    down,
+}
+
+camera: struct = {
+    position: vec3;
+    front: vec3;
+    up: vec3;
+    right: vec3;
+    world_up: vec3;
+    yaw: f32;            // degrees; -90 looks down -z
+    pitch: f32;          // degrees
+    speed: f32;          // units per second
+    sensitivity: f32;    // degrees per pixel of mouse movement
+    zoom: f32;           // vertical field of view, degrees
+}
+
+camera_create: proc(position: vec3, yaw: f32, pitch: f32) -> camera = {
+    c: camera = {};
+    c.position = position;
+    c.world_up = v3(0.0, 1.0, 0.0);
+    c.yaw = yaw;
+    c.pitch = pitch;
+    c.speed = 2.5;
+    c.sensitivity = 0.1;
+    c.zoom = 45.0;
+    camera_update_vectors(c&);
+    return c;
+}
+
+camera_view: proc(c: *const camera) -> mat4 = {
+    return m4_look_at(c[0].position, v3_add(c[0].position, c[0].front), c[0].up);
+}
+
+camera_process_keyboard: proc(c: *camera, direction: camera_movement, dt: f32) -> void = {
+    step: f32 = c[0].speed * dt;
+    switch (direction) {
+        case camera_movement.forward: { c[0].position = v3_add(c[0].position, v3_scale(c[0].front, step)); }
+        case camera_movement.backward: { c[0].position = v3_sub(c[0].position, v3_scale(c[0].front, step)); }
+        case camera_movement.left: { c[0].position = v3_sub(c[0].position, v3_scale(c[0].right, step)); }
+        case camera_movement.right: { c[0].position = v3_add(c[0].position, v3_scale(c[0].right, step)); }
+        case camera_movement.up: { c[0].position = v3_add(c[0].position, v3_scale(c[0].world_up, step)); }
+        case camera_movement.down: { c[0].position = v3_sub(c[0].position, v3_scale(c[0].world_up, step)); }
+    }
+}
+
+// Pitch stops short of straight up and down, where the view would flip.
+camera_process_mouse: proc(c: *camera, dx: f32, dy: f32) -> void = {
+    c[0].yaw += dx * c[0].sensitivity;
+    c[0].pitch = clampf(c[0].pitch + dy * c[0].sensitivity, -89.0, 89.0);
+    camera_update_vectors(c);
+}
+
+camera_process_scroll: proc(c: *camera, notches: f32) -> void = {
+    c[0].zoom = clampf(c[0].zoom - notches * 2.0, 1.0, 45.0);
+}
+
+camera_update_vectors: proc(c: *camera) -> void = {
+    yaw: f32 = radians(c[0].yaw);
+    pitch: f32 = radians(c[0].pitch);
+    c[0].front = v3_normalize(v3(cosf(yaw) * cosf(pitch), sinf(pitch), sinf(yaw) * cosf(pitch)));
+    c[0].right = v3_normalize(v3_cross(c[0].front, c[0].world_up));
+    c[0].up = v3_normalize(v3_cross(c[0].right, c[0].front));
+}

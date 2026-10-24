@@ -1,0 +1,361 @@
+// 10.1 Instancing
+//
+// Drawing the same mesh many times, each copy placed differently, in one draw
+// call. Twenty thousand rocks orbit a planet here; drawn one by one that would
+// be twenty thousand draws, each with its own constant buffer update.
+//
+// Instead every rock's model matrix goes into one more vertex buffer, marked
+// PER_INSTANCE_DATA in the input layout. The rock's own vertices are read per
+// vertex as usual; the matrix advances once per copy. DrawInstanced says how
+// many copies to make.
+//
+// A mat4 does not fit one input element (at most four floats), so it is sent as
+// four: INSTANCE0..3, one row each, put back together in the shader.
+
+import "../../../includes/win32.rin"
+import "../../../includes/math.rin"
+import "../../../includes/learn/shader.rin"
+import "../../../includes/learn/camera.rin"
+import "../../../includes/learn/model.rin"
+import "std/print.rin"
+import "std/memops.rin"
+
+// settings
+scr_width: i32 = 1280;
+scr_height: i32 = 720;
+
+rand: proc[external]() -> i32 = {}
+srand: proc[external](seed: u32) -> void = {}
+
+amount: u32 = 20000;
+
+instance_layout: [7]D3D11_INPUT_ELEMENT_DESC = {
+    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 0 },
+    { .SemanticName = "NORMAL", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 12 },
+    { .SemanticName = "TEXCOORD", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32_FLOAT, .AlignedByteOffset = 24 },
+    { .SemanticName = "INSTANCE", .SemanticIndex = 0, .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT, .InputSlot = 1, .AlignedByteOffset = 0, .InputSlotClass = D3D11_INPUT_CLASSIFICATION.D3D11_INPUT_PER_INSTANCE_DATA, .InstanceDataStepRate = 1 },
+    { .SemanticName = "INSTANCE", .SemanticIndex = 1, .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT, .InputSlot = 1, .AlignedByteOffset = 16, .InputSlotClass = D3D11_INPUT_CLASSIFICATION.D3D11_INPUT_PER_INSTANCE_DATA, .InstanceDataStepRate = 1 },
+    { .SemanticName = "INSTANCE", .SemanticIndex = 2, .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT, .InputSlot = 1, .AlignedByteOffset = 32, .InputSlotClass = D3D11_INPUT_CLASSIFICATION.D3D11_INPUT_PER_INSTANCE_DATA, .InstanceDataStepRate = 1 },
+    { .SemanticName = "INSTANCE", .SemanticIndex = 3, .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT, .InputSlot = 1, .AlignedByteOffset = 48, .InputSlotClass = D3D11_INPUT_CLASSIFICATION.D3D11_INPUT_PER_INSTANCE_DATA, .InstanceDataStepRate = 1 },
+};
+
+// Mirrors `cbuffer transforms` in the shaders, register for register.
+transforms: struct = {
+    model: mat4;
+    normal_matrix: mat4;
+    view: mat4;
+    projection: mat4;
+    view_position: vec3;
+    pad: f32;
+}
+
+random01: proc() -> f32 = {
+    return cast(rand() % 10000, f32) / 10000.0;
+}
+
+// camera
+cam: camera = {};
+last_cursor: POINT = {};
+scroll: f32 = 0.0;
+
+// timing
+delta_time: f32 = 0.0;
+last_frame: f32 = 0.0;
+perf_frequency: i64 = 0;
+perf_start: i64 = 0;
+
+// Seconds since the first call: what glfwGetTime is to LearnOpenGL.
+get_time: proc() -> f32 = {
+    now: LARGE_INTEGER = {};
+    if (perf_frequency == 0) {
+        QueryPerformanceFrequency(now&);
+        perf_frequency = now.QuadPart;
+        QueryPerformanceCounter(now&);
+        perf_start = now.QuadPart;
+    }
+    QueryPerformanceCounter(now&);
+    return cast(now.QuadPart - perf_start, f32) / cast(perf_frequency, f32);
+}
+
+// win32: every event for the window (keys, mouse, closing) arrives here
+// ---------------------------------------------------------------------
+window_proc: proc[callconv(CALLBACK)](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    if (msg == WM_MOUSEWHEEL) {
+        // The high word of wparam is the distance turned, 120 per notch.
+        scroll += cast(cast((wparam shr 16) & 0xffff, i16), f32) / 120.0;
+        return 0;
+    }
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
+// process all input: ask Windows whether relevant keys are down this frame and react accordingly
+// ----------------------------------------------------------------------------------------------
+// The top bit of GetAsyncKeyState is set while a key is held, which makes the SHORT negative.
+key_down: proc(key: i32) -> b32 = {
+    return GetAsyncKeyState(key) < 0;
+}
+
+process_input: proc(window: HWND) -> void = {
+    cursor: POINT = {};
+    GetCursorPos(cursor&);
+    // GetAsyncKeyState reads the whole keyboard, so ignore it while another
+    // window has the focus; glfwGetKey only ever sees its own window's keys.
+    if (GetForegroundWindow() != window) {
+        last_cursor = cursor;
+        scroll = 0.0;
+        return;
+    }
+    if (key_down(VK_ESCAPE)) { DestroyWindow(window); }
+    if (key_down('W')) { camera_process_keyboard(cam&, camera_movement.forward, delta_time); }
+    if (key_down('S')) { camera_process_keyboard(cam&, camera_movement.backward, delta_time); }
+    if (key_down('A')) { camera_process_keyboard(cam&, camera_movement.left, delta_time); }
+    if (key_down('D')) { camera_process_keyboard(cam&, camera_movement.right, delta_time); }
+    if (key_down(VK_SPACE)) { camera_process_keyboard(cam&, camera_movement.up, delta_time); }
+    if (key_down(VK_SHIFT)) { camera_process_keyboard(cam&, camera_movement.down, delta_time); }
+
+    // Hold the right mouse button to look around.
+    if (key_down(VK_RBUTTON)) {
+        // Screen y grows downwards, so moving the mouse up is a negative dy: pitch up.
+        camera_process_mouse(cam&, cast(cursor.x - last_cursor.x, f32), cast(last_cursor.y - cursor.y, f32));
+    }
+    last_cursor = cursor;
+    camera_process_scroll(cam&, scroll);
+    scroll = 0.0;
+}
+
+// An immutable buffer: filled once at creation, never written by the CPU again.
+create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: u64) -> *ID3D11Buffer = {
+    desc: D3D11_BUFFER_DESC = {};
+    desc.ByteWidth = cast(size, UINT);
+    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = bind;
+    init: D3D11_SUBRESOURCE_DATA = {};
+    init.pSysMem = data;
+    buffer: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, desc&, init&, buffer&);
+    return buffer;
+}
+
+// A constant buffer the CPU rewrites, usually every frame. Its size must be a
+// multiple of 16 bytes, the size of one HLSL register.
+create_constant_buffer: proc(device: *ID3D11Device, size: u64) -> *ID3D11Buffer = {
+    desc: D3D11_BUFFER_DESC = {};
+    desc.ByteWidth = cast(size, UINT);
+    desc.Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC;
+    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    buffer: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, desc&, null, buffer&);
+    return buffer;
+}
+
+// WRITE_DISCARD hands back fresh memory, so the GPU never waits on the CPU.
+update_buffer: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, data: *const void, size: u64) -> void = {
+    mapped: D3D11_MAPPED_SUBRESOURCE = {};
+    ID3D11DeviceContext_Map(context, cast(buffer, *ID3D11Resource), 0, D3D11_MAP.D3D11_MAP_WRITE_DISCARD, 0, mapped&);
+    memcpy(mapped.pData, data, size);
+    ID3D11DeviceContext_Unmap(context, cast(buffer, *ID3D11Resource), 0);
+}
+
+// The same buffer in the same register for the vertex, geometry and pixel stages.
+bind_constants: proc(context: *ID3D11DeviceContext, slot: UINT, buffer: *ID3D11Buffer) -> void = {
+    buffers: [1]*ID3D11Buffer = { buffer };
+    ID3D11DeviceContext_VSSetConstantBuffers(context, slot, 1, buffers[0]&);
+    ID3D11DeviceContext_GSSetConstantBuffers(context, slot, 1, buffers[0]&);
+    ID3D11DeviceContext_PSSetConstantBuffers(context, slot, 1, buffers[0]&);
+}
+
+main: proc() -> i32 = {
+    // win32: register a window class and create the window
+    // ----------------------------------------------------
+    SetProcessDPIAware();
+    instance: HMODULE = GetModuleHandleA(null);
+    wc: WNDCLASSA = {};
+    wc.lpfnWndProc = window_proc;
+    wc.hInstance = instance;
+    wc.hCursor = LoadCursorA(null, IDC_ARROW);
+    wc.lpszClassName = "LearnD3D11";
+    RegisterClassA(wc&);
+    // A fixed size: the swap chain and every render target keep the size they
+    // were created with, so nothing needs rebuilding on resize.
+    style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    rect: RECT = {};
+    rect.right = scr_width;
+    rect.bottom = scr_height;
+    AdjustWindowRect(rect&, style, 0);
+    window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+                                   rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
+    if (window == null) {
+        printf("Failed to create the window\n");
+        return -1;
+    }
+
+    // d3d11: create the device, its immediate context and a swap chain
+    // ----------------------------------------------------------------
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
+    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
+    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
+    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
+    swap_desc.SampleDesc.Count = 1;
+    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swap_desc.BufferCount = 2;
+    swap_desc.OutputWindow = window;
+    swap_desc.Windowed = 1;
+    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
+    swap_chain: *IDXGISwapChain = null;
+    device: *ID3D11Device = null;
+    context: *ID3D11DeviceContext = null;
+    if (D3D11CreateDeviceAndSwapChain(null, D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE, null, 0, feature_level&, 1, D3D11_SDK_VERSION,
+                                      swap_desc&, swap_chain&, device&, null, context&) < 0) {
+        printf("Failed to create the D3D11 device\n");
+        return -1;
+    }
+    backbuffer: *ID3D11Texture2D = null;
+    IDXGISwapChain_GetBuffer(swap_chain, 0, IID_ID3D11Texture2D&, cast(backbuffer&, **void));
+    backbuffer_rtv: *ID3D11RenderTargetView = null;
+    ID3D11Device_CreateRenderTargetView(device, cast(backbuffer, *ID3D11Resource), null, backbuffer_rtv&);
+
+    // A depth buffer the size of the window: 24 bits of depth, 8 of stencil.
+    depth_desc: D3D11_TEXTURE2D_DESC = {};
+    depth_desc.Width = cast(scr_width, UINT);
+    depth_desc.Height = cast(scr_height, UINT);
+    depth_desc.MipLevels = 1;
+    depth_desc.ArraySize = 1;
+    depth_desc.Format = DXGI_FORMAT.DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depth_desc.SampleDesc.Count = 1;
+    depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    depth_texture: *ID3D11Texture2D = null;
+    depth_dsv: *ID3D11DepthStencilView = null;
+    ID3D11Device_CreateTexture2D(device, depth_desc&, null, depth_texture&);
+    ID3D11Device_CreateDepthStencilView(device, cast(depth_texture, *ID3D11Resource), null, depth_dsv&);
+
+    // configure global d3d11 state
+    // ----------------------------
+    // GL's conventions rather than D3D's: counter-clockwise triangles face the
+    // viewer, and nothing is culled.
+    raster_desc: D3D11_RASTERIZER_DESC = {};
+    raster_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID;
+    raster_desc.CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE;
+    raster_desc.FrontCounterClockwise = 1;
+    raster_desc.DepthClipEnable = 1;
+    raster_state: *ID3D11RasterizerState = null;
+    ID3D11Device_CreateRasterizerState(device, raster_desc&, raster_state&);
+    ID3D11DeviceContext_RSSetState(context, raster_state);
+    viewport: D3D11_VIEWPORT = {};
+    viewport.Width = cast(scr_width, f32);
+    viewport.Height = cast(scr_height, f32);
+    viewport.MaxDepth = 1.0;
+
+    // A sampler: how textures are filtered and what happens past their edges.
+    sampler_desc: D3D11_SAMPLER_DESC = {};
+    sampler_desc.Filter = D3D11_FILTER.D3D11_FILTER_ANISOTROPIC;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.MaxAnisotropy = 8;
+    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+    sampler: *ID3D11SamplerState = null;
+    ID3D11Device_CreateSamplerState(device, sampler_desc&, sampler&);
+    ID3D11DeviceContext_PSSetSamplers(context, 0, 1, sampler&);
+
+    // build and compile shaders
+    // -------------------------
+    planet_shader: shader = shader_create(device, filesystem_path("src/4.advanced_d3d11/10.1.instancing/planet.hlsl"), model_vertex_layout);
+    rock_shader: shader = shader_create(device, filesystem_path("src/4.advanced_d3d11/10.1.instancing/asteroids.hlsl"), instance_layout);
+
+    // load models
+    // -----------
+    planet: model = model_load(device, context, "resources/objects/planet/", "planet.obj", 1);
+    rock: model = model_load(device, context, "resources/objects/rock/", "rock.obj", 1);
+    transforms_buffer: *ID3D11Buffer = create_constant_buffer(device, sizeof(transforms));
+    cam = camera_create(v3(0.0, 12.0, 70.0), -90.0, -10.0);
+    cam.speed = 15.0;
+    cam.zoom = 50.0;
+
+    // generate a large list of semi-random model transformation matrices: a
+    // ring, each rock at a random angle, nudged off the circle, then given a
+    // random size and spin. Seeded, so every run is the same ring.
+    // -----------------------------------------------------------------------
+    arena: memops_arena = {};
+    memops_arena_initialize(arena&);
+    srand(7);
+    matrices: [*]mat4 = cast(memops_arena_push(arena&, cast(amount, u64) * sizeof(mat4), 16), [*]mat4);
+    for (i: u32 = 0; i < amount; i += 1) {
+        angle: f32 = cast(i, f32) / cast(amount, f32) * 2.0 * pi;
+        radius: f32 = 45.0;
+        offset: f32 = 6.0;
+        x: f32 = sinf(angle) * radius + (random01() * 2.0 - 1.0) * offset;
+        y: f32 = (random01() * 2.0 - 1.0) * offset * 0.3;
+        z: f32 = cosf(angle) * radius + (random01() * 2.0 - 1.0) * offset;
+        scale: f32 = 0.05 + random01() * 0.2;
+        spin: mat4 = m4_rotate(random01() * 2.0 * pi, v3(0.4, 0.6, 0.8));
+        matrices[i] = m4_mul(m4_translate(v3(x, y, z)), m4_mul(spin, m4_scale(v3(scale, scale, scale))));
+    }
+    instance_buffer: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, matrices, cast(amount, u64) * sizeof(mat4));
+
+    // render loop
+    // -----------
+    running: b32 = 1;
+    while (running) {
+        msg: MSG = {};
+        while (PeekMessageA(msg&, null, 0, 0, PM_REMOVE) != 0) {
+            if (msg.message == WM_QUIT) { running = 0; }
+            TranslateMessage(msg&);
+            DispatchMessageA(msg&);
+        }
+
+        // per-frame time logic
+        // --------------------
+        current_frame: f32 = get_time();
+        delta_time = current_frame - last_frame;
+        last_frame = current_frame;
+
+        // input
+        // -----
+        process_input(window);
+
+        // render
+        // ------
+        clear_color: [4]f32 = { 0.02, 0.02, 0.03, 1.0 };
+        ID3D11DeviceContext_OMSetRenderTargets(context, 1, backbuffer_rtv&, depth_dsv);
+        ID3D11DeviceContext_RSSetViewports(context, 1, viewport&);
+        ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_rtv, clear_color[0]&);
+        ID3D11DeviceContext_ClearDepthStencilView(context, depth_dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0, 0);
+
+        t: transforms = {};
+        t.view = camera_view(cam&);
+        t.projection = m4_perspective(radians(cam.zoom), cast(scr_width, f32) / cast(scr_height, f32), 0.1, 500.0);
+        t.view_position = cam.position;
+        bind_constants(context, 0, transforms_buffer);
+
+        // draw planet: one ordinary draw
+        t.model = m4_mul(m4_rotate(current_frame * 0.1, v3(0.0, 1.0, 0.0)), m4_scale(v3(4.0, 4.0, 4.0)));
+        t.normal_matrix = m4_normal_matrix(t.model);
+        update_buffer(context, transforms_buffer, t&, sizeof(transforms));
+        shader_use(context, planet_shader&);
+        model_draw(context, planet&);
+
+        // draw meteorites: slot 0 is the rock, slot 1 the matrices, one draw
+        t.model = m4_rotate(current_frame * 0.02, v3(0.0, 1.0, 0.0));
+        update_buffer(context, transforms_buffer, t&, sizeof(transforms));
+        shader_use(context, rock_shader&);
+        // rock.mtl lists its colour map as map_Bump, so it is in the normal slot
+        views: [1]*ID3D11ShaderResourceView = { rock.normal };
+        ID3D11DeviceContext_PSSetShaderResources(context, 0, 1, views[0]&);
+        buffers: [2]*ID3D11Buffer = { rock.vertices, instance_buffer };
+        strides: [2]UINT = { sizeof(model_vertex), sizeof(mat4) };
+        offsets: [2]UINT = { 0, 0 };
+        ID3D11DeviceContext_IASetVertexBuffers(context, 0, 2, buffers[0]&, strides[0]&, offsets[0]&);
+        ID3D11DeviceContext_DrawInstanced(context, rock.vertex_count, amount, 0, 0);
+
+        // dxgi: show the image just drawn, waiting for the next vertical blank
+        // --------------------------------------------------------------------
+        IDXGISwapChain_Present(swap_chain, 1, 0);
+    }
+    return 0;
+}

@@ -1,0 +1,70 @@
+// A shader program from one .hlsl file: LearnOpenGL's Shader class.
+//
+// The file holds `vs_main` and `ps_main`, and optionally `gs_main`. They are
+// compiled with D3DCompile, and the input layout is created against the
+// vertex shader, which is the one place D3D checks that they match. A
+// compile error prints the file, line and message, and exits.
+//
+// 1.2 hello triangle does all of this by hand, once.
+
+import "../win32.rin"
+import "filesystem.rin"
+
+shader: struct = {
+    vs: *ID3D11VertexShader;
+    gs: *ID3D11GeometryShader;   // null unless the file has a gs_main
+    ps: *ID3D11PixelShader;
+    layout: *ID3D11InputLayout;  // null for shaders that make their own vertices
+}
+
+shader_compile: proc(path: [*]const char, source: [*]const u8, size: u64, entry: [*]const char, target: [*]const char) -> *ID3DBlob = {
+    code: *ID3DBlob = null;
+    errors: *ID3DBlob = null;
+    hr: HRESULT = D3DCompile(source, size, path, null, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target,
+                             D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_DEBUG, 0, code&, errors&);
+    if (hr < 0) {
+        printf("shader: %s\n", errors != null ? cast(ID3D10Blob_GetBufferPointer(errors), [*]const char) : path);
+        exit(1);
+    }
+    if (errors != null) { ID3D10Blob_Release(errors); }
+    return code;
+}
+
+shader_create: proc(device: *ID3D11Device, path: [*]const char, layout: []const D3D11_INPUT_ELEMENT_DESC) -> shader = {
+    size: u64 = 0;
+    source: [*]u8 = filesystem_read(path, size&);
+    if (source == null) {
+        printf("shader: cannot read %s\n", path);
+        exit(1);
+    }
+    result: shader = {};
+
+    vs: *ID3DBlob = shader_compile(path, source, size, "vs_main", "vs_5_0");
+    ID3D11Device_CreateVertexShader(device, ID3D10Blob_GetBufferPointer(vs), ID3D10Blob_GetBufferSize(vs), null, result.vs&);
+    if (layout.length > 0) {
+        if (ID3D11Device_CreateInputLayout(device, layout.data, cast(layout.length, UINT),
+                                           ID3D10Blob_GetBufferPointer(vs), ID3D10Blob_GetBufferSize(vs), result.layout&) < 0) {
+            printf("shader: the input layout does not match vs_main in %s\n", path);
+            exit(1);
+        }
+    }
+    ID3D10Blob_Release(vs);
+
+    if (cstr_find(cast(source, [*]const char), "gs_main") >= 0) {
+        gs: *ID3DBlob = shader_compile(path, source, size, "gs_main", "gs_5_0");
+        ID3D11Device_CreateGeometryShader(device, ID3D10Blob_GetBufferPointer(gs), ID3D10Blob_GetBufferSize(gs), null, result.gs&);
+        ID3D10Blob_Release(gs);
+    }
+
+    ps: *ID3DBlob = shader_compile(path, source, size, "ps_main", "ps_5_0");
+    ID3D11Device_CreatePixelShader(device, ID3D10Blob_GetBufferPointer(ps), ID3D10Blob_GetBufferSize(ps), null, result.ps&);
+    ID3D10Blob_Release(ps);
+    return result;
+}
+
+shader_use: proc(context: *ID3D11DeviceContext, s: *const shader) -> void = {
+    ID3D11DeviceContext_IASetInputLayout(context, s[0].layout);
+    ID3D11DeviceContext_VSSetShader(context, s[0].vs, null, 0);
+    ID3D11DeviceContext_GSSetShader(context, s[0].gs, null, 0);
+    ID3D11DeviceContext_PSSetShader(context, s[0].ps, null, 0);
+}

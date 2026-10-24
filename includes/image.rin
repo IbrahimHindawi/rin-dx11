@@ -1,0 +1,135 @@
+// Loading images: what stb_image is to LearnOpenGL.
+//
+//   image_load       .png / .jpg through WIC, Windows' own codecs, as RGBA8
+//   image_load_hdr   Radiance .hdr, as linear float RGBA
+//
+// Pixels come back top row first, which is how D3D lays out a texture, so
+// nothing is flipped. They live as long as the program.
+
+import "win32.rin"
+import "math.rin"
+import "std/memops.rin"
+import "std/cstr.rin"
+import "std/print.rin"
+
+ldexpf: proc[external](x: f32, exponent: i32) -> f32 = {}
+
+image: struct = {
+    pixels: [*]u8;       // RGBA8, width * height * 4 bytes
+    width: i32;
+    height: i32;
+}
+
+image_hdr: struct = {
+    pixels: [*]vec4;     // linear RGB, a = 1
+    width: i32;
+    height: i32;
+}
+
+image_arena: memops_arena = {};
+image_wic: *IWICImagingFactory = null;
+
+image_init: proc() -> void = {
+    if (image_wic != null) { return; }
+    memops_arena_initialize(image_arena&);
+    CoInitializeEx(null, COINIT_MULTITHREADED);
+    CoCreateInstance(CLSID_WICImagingFactory&, null, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory&, cast(image_wic&, **void));
+}
+
+// Null pixels when the file cannot be read or decoded.
+image_load: proc(path: [*]const char) -> image = {
+    image_init();
+    result: image = {};
+    wide: [520]WCHAR = {};
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wide[0]&, 520);
+    decoder: *IWICBitmapDecoder = null;
+    if (IWICImagingFactory_CreateDecoderFromFilename(image_wic, wide[0]&, null, GENERIC_READ,
+                                                     WICDecodeOptions.WICDecodeMetadataCacheOnDemand, decoder&) < 0) {
+        return result;
+    }
+    frame: *IWICBitmapFrameDecode = null;
+    converter: *IWICFormatConverter = null;
+    IWICBitmapDecoder_GetFrame(decoder, 0, frame&);
+    IWICImagingFactory_CreateFormatConverter(image_wic, converter&);
+    IWICFormatConverter_Initialize(converter, cast(frame, *IWICBitmapSource), GUID_WICPixelFormat32bppRGBA&,
+                                   WICBitmapDitherType.WICBitmapDitherTypeNone, null, 0.0,
+                                   WICBitmapPaletteType.WICBitmapPaletteTypeCustom);
+    w: UINT = 0;
+    h: UINT = 0;
+    IWICFormatConverter_GetSize(converter, w&, h&);
+    size: u64 = cast(w, u64) * cast(h, u64) * 4;
+    result.pixels = cast(memops_arena_push(image_arena&, size, 16), [*]u8);
+    IWICFormatConverter_CopyPixels(converter, null, w * 4, cast(size, UINT), result.pixels);
+    IWICFormatConverter_Release(converter);
+    IWICBitmapFrameDecode_Release(frame);
+    IWICBitmapDecoder_Release(decoder);
+    result.width = cast(w, i32);
+    result.height = cast(h, i32);
+    return result;
+}
+
+image_number: proc(text: [*]const u8, at: *u64) -> i32 = {
+    value: i32 = 0;
+    while (text[at[0]] >= '0' && text[at[0]] <= '9') {
+        value = value * 10 + cast(text[at[0]] - '0', i32);
+        at[0] += 1;
+    }
+    return value;
+}
+
+// Radiance .hdr stores each pixel as RGBE: three 8-bit mantissas sharing one
+// 8-bit exponent. The header is text up to a blank line, then the size
+// ("-Y height +X width", rows from the top). Each row is run-length encoded
+// one channel at a time: a count above 128 repeats the next byte
+// (count - 128) times, any other count is followed by that many bytes.
+image_load_hdr: proc(path: [*]const char) -> image_hdr = {
+    image_init();
+    result: image_hdr = {};
+    file: *FILE = fopen(path, "rb");
+    if (file == null) { return result; }
+    fseek(file, 0, 2);
+    size: u64 = cast(ftell(file), u64);
+    fseek(file, 0, 0);
+    data: [*]u8 = cast(memops_arena_push(image_arena&, size + 1, 16), [*]u8);
+    fread(data, 1, size, file);
+    fclose(file);
+    if (!cstr_starts_with(cast(data, [*]const char), "#?")) { return result; }
+
+    at: u64 = 0;
+    while (at + 1 < size && !(data[at] == '\n' && data[at + 1] == '\n')) { at += 1; }
+    at += 5;   // the blank line and "-Y "
+    result.height = image_number(data, at&);
+    at += 4;   // " +X "
+    result.width = image_number(data, at&);
+    at += 1;
+
+    w: u64 = cast(result.width, u64);
+    result.pixels = cast(memops_arena_push(image_arena&, w * cast(result.height, u64) * sizeof(vec4), 16), [*]vec4);
+    row: [*]u8 = cast(memops_arena_push(image_arena&, w * 4, 16), [*]u8);
+    for (y: u64 = 0; y < cast(result.height, u64); y += 1) {
+        at += 4;   // 2, 2, then the width again
+        for (channel: u64 = 0; channel < 4; channel += 1) {
+            x: u64 = 0;
+            while (x < w) {
+                count: u64 = cast(data[at], u64);
+                at += 1;
+                if (count > 128) {
+                    count -= 128;
+                    for (i: u64 = 0; i < count; i += 1) { row[(x + i) * 4 + channel] = data[at]; }
+                    at += 1;
+                } else {
+                    for (i: u64 = 0; i < count; i += 1) { row[(x + i) * 4 + channel] = data[at + i]; }
+                    at += count;
+                }
+                x += count;
+            }
+        }
+        for (x: u64 = 0; x < w; x += 1) {
+            e: i32 = cast(row[x * 4 + 3], i32);
+            // mantissa / 256 * 2^(e - 128), and e = 0 means black
+            scale: f32 = e == 0 ? 0.0 : ldexpf(1.0, e - 136);
+            result.pixels[y * w + x] = v4(cast(row[x * 4], f32) * scale, cast(row[x * 4 + 1], f32) * scale, cast(row[x * 4 + 2], f32) * scale, 1.0);
+        }
+    }
+    return result;
+}

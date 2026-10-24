@@ -1,0 +1,249 @@
+// 2.1 Hello triangle
+//
+// Getting three points on screen, with every step written out:
+//
+//   1. compile a vertex shader and a pixel shader from HLSL
+//   2. put the vertices in a GPU buffer, and describe one vertex's layout
+//   3. each frame: bind it all, and draw
+//
+// The vertex shader runs once per vertex and says where it lands in clip
+// space; the pixel shader runs once per covered pixel and says its colour. GL
+// needs a VBO and a VAO; D3D needs the buffer and an input layout, which is
+// checked against the vertex shader when it is created.
+//
+// The left shape is three vertices drawn in order. The right is four vertices
+// and six indices: two triangles sharing a diagonal, with no vertex stored
+// twice (LearnOpenGL's 2.2 hello_triangle_indexed). Tab toggles wireframe,
+// which shows the diagonal.
+
+import "../../../includes/win32.rin"
+import "../../../includes/learn/filesystem.rin"
+import "std/print.rin"
+
+// settings
+scr_width: i32 = 1280;
+scr_height: i32 = 720;
+
+// keys pressed since they were last read, for toggles
+keys_pressed: [256]b32 = {};
+
+key_pressed: proc(key: i32) -> b32 = {
+    if (!keys_pressed[key]) { return 0; }
+    keys_pressed[key] = 0;
+    return 1;
+}
+
+// Positions straight in clip space: x and y from -1 to 1, the centre is 0.
+// Counter-clockwise, which these lessons treat as the front.
+triangle_vertices: [9]f32 = {
+    -0.9, -0.5, 0.0,
+    -0.1, -0.5, 0.0,
+    -0.5,  0.5, 0.0,
+};
+
+rectangle_vertices: [12]f32 = {
+    0.1, -0.5, 0.0,   // bottom left
+    0.9, -0.5, 0.0,   // bottom right
+    0.9,  0.5, 0.0,   // top right
+    0.1,  0.5, 0.0,   // top left
+};
+
+rectangle_indices: [6]u32 = { 0, 1, 2, 0, 2, 3 };
+
+// One attribute: three floats, read as POSITION by the vertex shader.
+layout: [1]D3D11_INPUT_ELEMENT_DESC = {
+    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT },
+};
+
+// win32: every event for the window (keys, mouse, closing) arrives here
+// ---------------------------------------------------------------------
+window_proc: proc[callconv(CALLBACK)](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    // Bit 30 of lparam is set when the key was already down: a repeat.
+    if (msg == WM_KEYDOWN && wparam < 256 && (lparam & 0x40000000) == 0) {
+        keys_pressed[wparam] = 1;
+        return 0;
+    }
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
+// process all input: ask Windows whether relevant keys are down this frame and react accordingly
+// ----------------------------------------------------------------------------------------------
+// The top bit of GetAsyncKeyState is set while a key is held, which makes the SHORT negative.
+key_down: proc(key: i32) -> b32 = {
+    return GetAsyncKeyState(key) < 0;
+}
+
+process_input: proc(window: HWND) -> void = {
+    // GetAsyncKeyState reads the whole keyboard, so ignore it while another
+    // window has the focus; glfwGetKey only ever sees its own window's keys.
+    if (GetForegroundWindow() != window) { return; }
+    if (key_down(VK_ESCAPE)) { DestroyWindow(window); }
+}
+
+compile_shader: proc(path: [*]const char, source: [*]u8, size: u64, entry: [*]const char, target: [*]const char) -> *ID3DBlob = {
+    code: *ID3DBlob = null;
+    errors: *ID3DBlob = null;
+    if (D3DCompile(source, size, path, null, null, entry, target, 0, 0, code&, errors&) < 0) {
+        printf("ERROR::SHADER::COMPILATION_FAILED\n%s\n", cast(ID3D10Blob_GetBufferPointer(errors), [*]const char));
+        exit(1);
+    }
+    return code;
+}
+
+// An immutable buffer: filled once at creation, never written by the CPU again.
+create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: u64) -> *ID3D11Buffer = {
+    desc: D3D11_BUFFER_DESC = {};
+    desc.ByteWidth = cast(size, UINT);
+    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = bind;
+    init: D3D11_SUBRESOURCE_DATA = {};
+    init.pSysMem = data;
+    buffer: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, desc&, init&, buffer&);
+    return buffer;
+}
+
+main: proc() -> i32 = {
+    // win32: register a window class and create the window
+    // ----------------------------------------------------
+    SetProcessDPIAware();
+    instance: HMODULE = GetModuleHandleA(null);
+    wc: WNDCLASSA = {};
+    wc.lpfnWndProc = window_proc;
+    wc.hInstance = instance;
+    wc.hCursor = LoadCursorA(null, IDC_ARROW);
+    wc.lpszClassName = "LearnD3D11";
+    RegisterClassA(wc&);
+    // A fixed size: the swap chain and every render target keep the size they
+    // were created with, so nothing needs rebuilding on resize.
+    style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    rect: RECT = {};
+    rect.right = scr_width;
+    rect.bottom = scr_height;
+    AdjustWindowRect(rect&, style, 0);
+    window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+                                   rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
+    if (window == null) {
+        printf("Failed to create the window\n");
+        return -1;
+    }
+
+    // d3d11: create the device, its immediate context and a swap chain
+    // ----------------------------------------------------------------
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
+    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
+    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
+    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
+    swap_desc.SampleDesc.Count = 1;
+    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swap_desc.BufferCount = 2;
+    swap_desc.OutputWindow = window;
+    swap_desc.Windowed = 1;
+    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
+    swap_chain: *IDXGISwapChain = null;
+    device: *ID3D11Device = null;
+    context: *ID3D11DeviceContext = null;
+    if (D3D11CreateDeviceAndSwapChain(null, D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE, null, 0, feature_level&, 1, D3D11_SDK_VERSION,
+                                      swap_desc&, swap_chain&, device&, null, context&) < 0) {
+        printf("Failed to create the D3D11 device\n");
+        return -1;
+    }
+    backbuffer: *ID3D11Texture2D = null;
+    IDXGISwapChain_GetBuffer(swap_chain, 0, IID_ID3D11Texture2D&, cast(backbuffer&, **void));
+    backbuffer_rtv: *ID3D11RenderTargetView = null;
+    ID3D11Device_CreateRenderTargetView(device, cast(backbuffer, *ID3D11Resource), null, backbuffer_rtv&);
+
+    // configure global d3d11 state
+    // ----------------------------
+    // GL's conventions rather than D3D's: counter-clockwise triangles face the
+    // viewer, and nothing is culled.
+    raster_desc: D3D11_RASTERIZER_DESC = {};
+    raster_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID;
+    raster_desc.CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE;
+    raster_desc.FrontCounterClockwise = 1;
+    raster_desc.DepthClipEnable = 1;
+    raster_state: *ID3D11RasterizerState = null;
+    ID3D11Device_CreateRasterizerState(device, raster_desc&, raster_state&);
+    ID3D11DeviceContext_RSSetState(context, raster_state);
+    viewport: D3D11_VIEWPORT = {};
+    viewport.Width = cast(scr_width, f32);
+    viewport.Height = cast(scr_height, f32);
+    viewport.MaxDepth = 1.0;
+
+    // build and compile our shader program
+    // ------------------------------------
+    path: [*]const char = filesystem_path("src/1.getting_started/2.1.hello_triangle/hello_triangle.hlsl");
+    size: u64 = 0;
+    source: [*]u8 = filesystem_read(path, size&);
+    vs_code: *ID3DBlob = compile_shader(path, source, size, "vs_main", "vs_5_0");
+    ps_code: *ID3DBlob = compile_shader(path, source, size, "ps_main", "ps_5_0");
+    vertex_shader: *ID3D11VertexShader = null;
+    pixel_shader: *ID3D11PixelShader = null;
+    input_layout: *ID3D11InputLayout = null;
+    ID3D11Device_CreateVertexShader(device, ID3D10Blob_GetBufferPointer(vs_code), ID3D10Blob_GetBufferSize(vs_code), null, vertex_shader&);
+    ID3D11Device_CreatePixelShader(device, ID3D10Blob_GetBufferPointer(ps_code), ID3D10Blob_GetBufferSize(ps_code), null, pixel_shader&);
+    // The layout is created against the compiled vertex shader, which is the
+    // one place D3D checks that the two agree.
+    ID3D11Device_CreateInputLayout(device, layout[0]&, 1, ID3D10Blob_GetBufferPointer(vs_code), ID3D10Blob_GetBufferSize(vs_code), input_layout&);
+
+    // set up vertex data (and buffer(s))
+    // ----------------------------------
+    triangle_vb: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, triangle_vertices[0]&, sizeof(triangle_vertices));
+    rectangle_vb: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, rectangle_vertices[0]&, sizeof(rectangle_vertices));
+    rectangle_ib: *ID3D11Buffer = create_buffer(device, D3D11_BIND_INDEX_BUFFER, rectangle_indices[0]&, sizeof(rectangle_indices));
+
+    wire_desc: D3D11_RASTERIZER_DESC = raster_desc;
+    wire_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_WIREFRAME;
+    wire_state: *ID3D11RasterizerState = null;
+    ID3D11Device_CreateRasterizerState(device, wire_desc&, wire_state&);
+    wireframe: b32 = 0;
+    stride: UINT = 12;
+    offset: UINT = 0;
+
+    // render loop
+    // -----------
+    running: b32 = 1;
+    while (running) {
+        msg: MSG = {};
+        while (PeekMessageA(msg&, null, 0, 0, PM_REMOVE) != 0) {
+            if (msg.message == WM_QUIT) { running = 0; }
+            TranslateMessage(msg&);
+            DispatchMessageA(msg&);
+        }
+
+        // input
+        // -----
+        process_input(window);
+        if (key_pressed(VK_TAB)) { wireframe = !wireframe; }
+
+        // render
+        // ------
+        clear_color: [4]f32 = { 0.2, 0.3, 0.3, 1.0 };
+        ID3D11DeviceContext_OMSetRenderTargets(context, 1, backbuffer_rtv&, null);
+        ID3D11DeviceContext_RSSetViewports(context, 1, viewport&);
+        ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_rtv, clear_color[0]&);
+
+        ID3D11DeviceContext_RSSetState(context, wireframe ? wire_state : raster_state);
+        ID3D11DeviceContext_IASetInputLayout(context, input_layout);
+        ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ID3D11DeviceContext_VSSetShader(context, vertex_shader, null, 0);
+        ID3D11DeviceContext_PSSetShader(context, pixel_shader, null, 0);
+
+        ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, triangle_vb&, stride&, offset&);
+        ID3D11DeviceContext_Draw(context, 3, 0);
+
+        ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, rectangle_vb&, stride&, offset&);
+        ID3D11DeviceContext_IASetIndexBuffer(context, rectangle_ib, DXGI_FORMAT.DXGI_FORMAT_R32_UINT, 0);
+        ID3D11DeviceContext_DrawIndexed(context, 6, 0, 0);
+
+        // dxgi: show the image just drawn, waiting for the next vertical blank
+        // --------------------------------------------------------------------
+        IDXGISwapChain_Present(swap_chain, 1, 0);
+    }
+    return 0;
+}

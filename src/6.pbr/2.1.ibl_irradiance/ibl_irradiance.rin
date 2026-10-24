@@ -1,0 +1,657 @@
+// 2.1 IBL: diffuse irradiance
+//
+// Real objects are lit by everything around them, not by four points. Image
+// based lighting takes "everything around" from an HDR photograph of a real
+// place, and lets every pixel be lit by all of it.
+//
+// For diffuse light that means: for each normal, the cosine-weighted average of
+// the whole hemisphere it faces. That is far too much to sum per pixel per
+// frame, but it depends only on the normal, so it is computed once at startup
+// into a small cubemap, the irradiance map, and looked up by normal:
+//
+//   1. the photo, stored equirectangular (a world map of directions), is drawn
+//      onto the six faces of a cubemap
+//   2. that cubemap is convolved into a 32x32 irradiance cubemap
+//
+// The spheres keep the four point lights of 1.1 and add the environment as their
+// ambient term; the photo itself is drawn behind them. (LearnOpenGL's 2.1.1
+// conversion step is the first half of this program.)
+
+import "../../../includes/win32.rin"
+import "../../../includes/math.rin"
+import "../../../includes/image.rin"
+import "../../../includes/learn/shader.rin"
+import "../../../includes/learn/camera.rin"
+import "std/print.rin"
+import "std/memops.rin"
+
+// settings
+scr_width: i32 = 1280;
+scr_height: i32 = 720;
+
+// a unit cube: position, normal, texture coordinate; counter-clockwise from outside
+cube_vertices: [288]f32 = {
+    // right (+x)
+     0.5, -0.5,  0.5,    1.0,  0.0,  0.0,   0.0, 1.0,
+     0.5, -0.5, -0.5,    1.0,  0.0,  0.0,   1.0, 1.0,
+     0.5,  0.5, -0.5,    1.0,  0.0,  0.0,   1.0, 0.0,
+     0.5, -0.5,  0.5,    1.0,  0.0,  0.0,   0.0, 1.0,
+     0.5,  0.5, -0.5,    1.0,  0.0,  0.0,   1.0, 0.0,
+     0.5,  0.5,  0.5,    1.0,  0.0,  0.0,   0.0, 0.0,
+    // left (-x)
+    -0.5, -0.5, -0.5,   -1.0,  0.0,  0.0,   0.0, 1.0,
+    -0.5, -0.5,  0.5,   -1.0,  0.0,  0.0,   1.0, 1.0,
+    -0.5,  0.5,  0.5,   -1.0,  0.0,  0.0,   1.0, 0.0,
+    -0.5, -0.5, -0.5,   -1.0,  0.0,  0.0,   0.0, 1.0,
+    -0.5,  0.5,  0.5,   -1.0,  0.0,  0.0,   1.0, 0.0,
+    -0.5,  0.5, -0.5,   -1.0,  0.0,  0.0,   0.0, 0.0,
+    // top (+y)
+    -0.5,  0.5,  0.5,    0.0,  1.0,  0.0,   0.0, 1.0,
+     0.5,  0.5,  0.5,    0.0,  1.0,  0.0,   1.0, 1.0,
+     0.5,  0.5, -0.5,    0.0,  1.0,  0.0,   1.0, 0.0,
+    -0.5,  0.5,  0.5,    0.0,  1.0,  0.0,   0.0, 1.0,
+     0.5,  0.5, -0.5,    0.0,  1.0,  0.0,   1.0, 0.0,
+    -0.5,  0.5, -0.5,    0.0,  1.0,  0.0,   0.0, 0.0,
+    // bottom (-y)
+    -0.5, -0.5, -0.5,    0.0, -1.0,  0.0,   0.0, 1.0,
+     0.5, -0.5, -0.5,    0.0, -1.0,  0.0,   1.0, 1.0,
+     0.5, -0.5,  0.5,    0.0, -1.0,  0.0,   1.0, 0.0,
+    -0.5, -0.5, -0.5,    0.0, -1.0,  0.0,   0.0, 1.0,
+     0.5, -0.5,  0.5,    0.0, -1.0,  0.0,   1.0, 0.0,
+    -0.5, -0.5,  0.5,    0.0, -1.0,  0.0,   0.0, 0.0,
+    // front (+z)
+    -0.5, -0.5,  0.5,    0.0,  0.0,  1.0,   0.0, 1.0,
+     0.5, -0.5,  0.5,    0.0,  0.0,  1.0,   1.0, 1.0,
+     0.5,  0.5,  0.5,    0.0,  0.0,  1.0,   1.0, 0.0,
+    -0.5, -0.5,  0.5,    0.0,  0.0,  1.0,   0.0, 1.0,
+     0.5,  0.5,  0.5,    0.0,  0.0,  1.0,   1.0, 0.0,
+    -0.5,  0.5,  0.5,    0.0,  0.0,  1.0,   0.0, 0.0,
+    // back (-z)
+     0.5, -0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 1.0,
+    -0.5, -0.5, -0.5,    0.0,  0.0, -1.0,   1.0, 1.0,
+    -0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   1.0, 0.0,
+     0.5, -0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 1.0,
+    -0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   1.0, 0.0,
+     0.5,  0.5, -0.5,    0.0,  0.0, -1.0,   0.0, 0.0,
+};
+
+vertex_layout: [3]D3D11_INPUT_ELEMENT_DESC = {
+    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 0 },
+    { .SemanticName = "NORMAL", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 12 },
+    { .SemanticName = "TEXCOORD", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32_FLOAT, .AlignedByteOffset = 24 },
+};
+
+material_constants: struct = {
+    albedo: vec3;
+    metallic: f32;
+    roughness: f32;
+    ao: f32;
+    textured: i32;
+    pad: f32;
+}
+
+lights_constants: struct = {
+    positions: [4]vec4;
+    colors: [4]vec4;
+}
+
+// Mirrors `cbuffer transforms` in the shaders, register for register.
+transforms: struct = {
+    model: mat4;
+    normal_matrix: mat4;     // inverse transpose of model, for normals
+    view: mat4;
+    projection: mat4;
+    view_position: vec3;     // the eye, in world space
+    pad: f32;
+}
+
+// Draws the 36 vertices of the bound cube with `model`.
+draw_cube: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, t: *transforms, model: mat4) -> void = {
+    t[0].model = model;
+    t[0].normal_matrix = m4_normal_matrix(model);
+    update_buffer(context, buffer, t, sizeof(transforms));
+    ID3D11DeviceContext_Draw(context, 36, 0);
+}
+
+// camera
+cam: camera = {};
+last_cursor: POINT = {};
+scroll: f32 = 0.0;
+
+// timing
+delta_time: f32 = 0.0;
+last_frame: f32 = 0.0;
+perf_frequency: i64 = 0;
+perf_start: i64 = 0;
+
+// Seconds since the first call: what glfwGetTime is to LearnOpenGL.
+get_time: proc() -> f32 = {
+    now: LARGE_INTEGER = {};
+    if (perf_frequency == 0) {
+        QueryPerformanceFrequency(now&);
+        perf_frequency = now.QuadPart;
+        QueryPerformanceCounter(now&);
+        perf_start = now.QuadPart;
+    }
+    QueryPerformanceCounter(now&);
+    return cast(now.QuadPart - perf_start, f32) / cast(perf_frequency, f32);
+}
+
+// win32: every event for the window (keys, mouse, closing) arrives here
+// ---------------------------------------------------------------------
+window_proc: proc[callconv(CALLBACK)](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    if (msg == WM_MOUSEWHEEL) {
+        // The high word of wparam is the distance turned, 120 per notch.
+        scroll += cast(cast((wparam shr 16) & 0xffff, i16), f32) / 120.0;
+        return 0;
+    }
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
+// process all input: ask Windows whether relevant keys are down this frame and react accordingly
+// ----------------------------------------------------------------------------------------------
+// The top bit of GetAsyncKeyState is set while a key is held, which makes the SHORT negative.
+key_down: proc(key: i32) -> b32 = {
+    return GetAsyncKeyState(key) < 0;
+}
+
+process_input: proc(window: HWND) -> void = {
+    cursor: POINT = {};
+    GetCursorPos(cursor&);
+    // GetAsyncKeyState reads the whole keyboard, so ignore it while another
+    // window has the focus; glfwGetKey only ever sees its own window's keys.
+    if (GetForegroundWindow() != window) {
+        last_cursor = cursor;
+        scroll = 0.0;
+        return;
+    }
+    if (key_down(VK_ESCAPE)) { DestroyWindow(window); }
+    if (key_down('W')) { camera_process_keyboard(cam&, camera_movement.forward, delta_time); }
+    if (key_down('S')) { camera_process_keyboard(cam&, camera_movement.backward, delta_time); }
+    if (key_down('A')) { camera_process_keyboard(cam&, camera_movement.left, delta_time); }
+    if (key_down('D')) { camera_process_keyboard(cam&, camera_movement.right, delta_time); }
+    if (key_down(VK_SPACE)) { camera_process_keyboard(cam&, camera_movement.up, delta_time); }
+    if (key_down(VK_SHIFT)) { camera_process_keyboard(cam&, camera_movement.down, delta_time); }
+
+    // Hold the right mouse button to look around.
+    if (key_down(VK_RBUTTON)) {
+        // Screen y grows downwards, so moving the mouse up is a negative dy: pitch up.
+        camera_process_mouse(cam&, cast(cursor.x - last_cursor.x, f32), cast(last_cursor.y - cursor.y, f32));
+    }
+    last_cursor = cursor;
+    camera_process_scroll(cam&, scroll);
+    scroll = 0.0;
+}
+
+// An immutable buffer: filled once at creation, never written by the CPU again.
+create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: u64) -> *ID3D11Buffer = {
+    desc: D3D11_BUFFER_DESC = {};
+    desc.ByteWidth = cast(size, UINT);
+    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = bind;
+    init: D3D11_SUBRESOURCE_DATA = {};
+    init.pSysMem = data;
+    buffer: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, desc&, init&, buffer&);
+    return buffer;
+}
+
+// A constant buffer the CPU rewrites, usually every frame. Its size must be a
+// multiple of 16 bytes, the size of one HLSL register.
+create_constant_buffer: proc(device: *ID3D11Device, size: u64) -> *ID3D11Buffer = {
+    desc: D3D11_BUFFER_DESC = {};
+    desc.ByteWidth = cast(size, UINT);
+    desc.Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC;
+    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    buffer: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, desc&, null, buffer&);
+    return buffer;
+}
+
+// WRITE_DISCARD hands back fresh memory, so the GPU never waits on the CPU.
+update_buffer: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, data: *const void, size: u64) -> void = {
+    mapped: D3D11_MAPPED_SUBRESOURCE = {};
+    ID3D11DeviceContext_Map(context, cast(buffer, *ID3D11Resource), 0, D3D11_MAP.D3D11_MAP_WRITE_DISCARD, 0, mapped&);
+    memcpy(mapped.pData, data, size);
+    ID3D11DeviceContext_Unmap(context, cast(buffer, *ID3D11Resource), 0);
+}
+
+// The same buffer in the same register for the vertex, geometry and pixel stages.
+bind_constants: proc(context: *ID3D11DeviceContext, slot: UINT, buffer: *ID3D11Buffer) -> void = {
+    buffers: [1]*ID3D11Buffer = { buffer };
+    ID3D11DeviceContext_VSSetConstantBuffers(context, slot, 1, buffers[0]&);
+    ID3D11DeviceContext_GSSetConstantBuffers(context, slot, 1, buffers[0]&);
+    ID3D11DeviceContext_PSSetConstantBuffers(context, slot, 1, buffers[0]&);
+}
+
+// utility function for loading a 2D texture from file, with a full mip chain
+// --------------------------------------------------------------------------
+// `srgb`: the file stores colours, gamma encoded, and sampling should decode
+// them to linear. Data such as normals or roughness is linear already.
+load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [*]const char, srgb: b32) -> *ID3D11ShaderResourceView = {
+    img: image = image_load(path);
+    if (img.pixels == null) {
+        printf("Texture failed to load at path: %s\n", path);
+        exit(1);
+    }
+    desc: D3D11_TEXTURE2D_DESC = {};
+    desc.Width = cast(img.width, UINT);
+    desc.Height = cast(img.height, UINT);
+    desc.MipLevels = 0;   // the whole chain
+    desc.ArraySize = 1;
+    desc.Format = srgb ? DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    // Generating mips draws into the texture, so it is a render target too.
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    texture: *ID3D11Texture2D = null;
+    srv: *ID3D11ShaderResourceView = null;
+    ID3D11Device_CreateTexture2D(device, desc&, null, texture&);
+    ID3D11Device_CreateShaderResourceView(device, cast(texture, *ID3D11Resource), null, srv&);
+    ID3D11DeviceContext_UpdateSubresource(context, cast(texture, *ID3D11Resource), 0, null, img.pixels, cast(img.width * 4, UINT), 0);
+    ID3D11DeviceContext_GenerateMips(context, srv);
+    return srv;
+}
+
+bind_texture: proc(context: *ID3D11DeviceContext, slot: UINT, srv: *ID3D11ShaderResourceView) -> void = {
+    views: [1]*ID3D11ShaderResourceView = { srv };
+    ID3D11DeviceContext_PSSetShaderResources(context, slot, 1, views[0]&);
+}
+
+// Draws `count` vertices of `buffer` (32-byte vertices) with `model`.
+draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: *transforms, buffer: *ID3D11Buffer, count: UINT, model: mat4) -> void = {
+    stride: UINT = 32;
+    offset: UINT = 0;
+    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
+    t[0].model = model;
+    t[0].normal_matrix = m4_normal_matrix(model);
+    update_buffer(context, constants, t, sizeof(transforms));
+    ID3D11DeviceContext_Draw(context, count, 0);
+}
+
+// A texture cannot be read while it is bound as a target, so the slots are
+// emptied before drawing into one.
+unbind_textures: proc(context: *ID3D11DeviceContext) -> void = {
+    views: [8]*ID3D11ShaderResourceView = {};
+    ID3D11DeviceContext_PSSetShaderResources(context, 0, 8, views[0]&);
+}
+
+// A UV sphere of radius 1, indexed: `segments` slices around and as many
+// stacks from pole to pole. u runs around the equator and v from the top
+// pole down, the way an equirectangular texture wraps it.
+sphere: struct = {
+    vertices: *ID3D11Buffer;
+    indices: *ID3D11Buffer;
+    index_count: UINT;
+}
+
+create_sphere: proc(device: *ID3D11Device, arena: *memops_arena, segments: u32) -> sphere = {
+    ring: u32 = segments + 1;
+    vertices: [*]f32 = cast(memops_arena_push(arena, cast(ring * ring * 8, u64) * 4, 16), [*]f32);
+    indices: [*]u32 = cast(memops_arena_push(arena, cast(segments * segments * 6, u64) * 4, 16), [*]u32);
+    for (y: u32 = 0; y <= segments; y += 1) {
+        for (x: u32 = 0; x <= segments; x += 1) {
+            u: f32 = cast(x, f32) / cast(segments, f32);
+            v: f32 = cast(y, f32) / cast(segments, f32);
+            p: vec3 = v3(cosf(u * 2.0 * pi) * sinf(v * pi), cosf(v * pi), sinf(u * 2.0 * pi) * sinf(v * pi));
+            values: [8]f32 = { p.x, p.y, p.z, p.x, p.y, p.z, u, v };
+            for (k: u32 = 0; k < 8; k += 1) { vertices[(y * ring + x) * 8 + k] = values[k]; }
+        }
+    }
+    n: u32 = 0;
+    for (y: u32 = 0; y < segments; y += 1) {
+        for (x: u32 = 0; x < segments; x += 1) {
+            a: u32 = y * ring + x;      // this stack, this slice
+            b: u32 = a + ring;          // the stack below
+            quad: [6]u32 = { a, a + 1, b + 1, a, b + 1, b };   // counter-clockwise from outside
+            for (i: u32 = 0; i < 6; i += 1) {
+                indices[n] = quad[i];
+                n += 1;
+            }
+        }
+    }
+    s: sphere = {};
+    s.vertices = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, vertices, cast(ring * ring * 8, u64) * 4);
+    s.indices = create_buffer(device, D3D11_BIND_INDEX_BUFFER, indices, cast(n, u64) * 4);
+    s.index_count = n;
+    return s;
+}
+
+draw_sphere: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: *transforms, s: *const sphere, model: mat4) -> void = {
+    stride: UINT = 32;
+    offset: UINT = 0;
+    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, s[0].vertices&, stride&, offset&);
+    ID3D11DeviceContext_IASetIndexBuffer(context, s[0].indices, DXGI_FORMAT.DXGI_FORMAT_R32_UINT, 0);
+    t[0].model = model;
+    t[0].normal_matrix = m4_normal_matrix(model);
+    update_buffer(context, constants, t, sizeof(transforms));
+    ID3D11DeviceContext_DrawIndexed(context, s[0].index_count, 0, 0);
+}
+
+// A cubemap that can be drawn into face by face (and mip by mip), then read.
+cube_target: struct = {
+    texture: *ID3D11Texture2D;
+    srv: *ID3D11ShaderResourceView;
+    size: i32;
+}
+
+create_cube_target: proc(device: *ID3D11Device, size: i32, mips: UINT, generate_mips: b32) -> cube_target = {
+    t: cube_target = {};
+    t.size = size;
+    desc: D3D11_TEXTURE2D_DESC = {};
+    desc.Width = cast(size, UINT);
+    desc.Height = cast(size, UINT);
+    desc.MipLevels = mips;
+    desc.ArraySize = 6;
+    desc.Format = DXGI_FORMAT.DXGI_FORMAT_R16G16B16A16_FLOAT;
+    desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+    if (generate_mips) { desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | D3D11_RESOURCE_MISC_GENERATE_MIPS; }
+    ID3D11Device_CreateTexture2D(device, desc&, null, t.texture&);
+    view: D3D11_SHADER_RESOURCE_VIEW_DESC = {};
+    view.Format = desc.Format;
+    view.ViewDimension = D3D11_SRV_DIMENSION.D3D11_SRV_DIMENSION_TEXTURECUBE;
+    view.TextureCube.MipLevels = 0xffffffff;   // all of them
+    ID3D11Device_CreateShaderResourceView(device, cast(t.texture, *ID3D11Resource), view&, t.srv&);
+    return t;
+}
+
+// Draws the inside of the unit cube with the bound shader into one mip of
+// every face of `target`, through LearnOpenGL's six capture views. A
+// cubemap's faces are laid out left-handed, which a right-handed look-at
+// cannot produce; GL's bottom-up framebuffer flips every rendered image and
+// fixes that for free, D3D's is top-down, so the projection flips y instead.
+// The flip reverses the winding, which is why culling stays off.
+render_to_cube: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, target: *cube_target, mip: UINT,
+                     constants: *ID3D11Buffer, cube_vb: *ID3D11Buffer) -> void = {
+    targets: [6]vec3 = { v3(1.0, 0.0, 0.0), v3(-1.0, 0.0, 0.0), v3(0.0, 1.0, 0.0), v3(0.0, -1.0, 0.0), v3(0.0, 0.0, 1.0), v3(0.0, 0.0, -1.0) };
+    ups: [6]vec3 = { v3(0.0, -1.0, 0.0), v3(0.0, -1.0, 0.0), v3(0.0, 0.0, 1.0), v3(0.0, 0.0, -1.0), v3(0.0, -1.0, 0.0), v3(0.0, -1.0, 0.0) };
+    t: transforms = {};
+    t.projection = m4_mul(m4_scale(v3(1.0, -1.0, 1.0)), m4_perspective(radians(90.0), 1.0, 0.1, 10.0));
+    size: i32 = target[0].size shr cast(mip, i32);
+    viewport: D3D11_VIEWPORT = {};
+    viewport.Width = cast(size, f32);
+    viewport.Height = cast(size, f32);
+    viewport.MaxDepth = 1.0;
+    ID3D11DeviceContext_RSSetViewports(context, 1, viewport&);
+    for (face: UINT = 0; face < 6; face += 1) {
+        rtv_desc: D3D11_RENDER_TARGET_VIEW_DESC = {};
+        rtv_desc.Format = DXGI_FORMAT.DXGI_FORMAT_R16G16B16A16_FLOAT;
+        rtv_desc.ViewDimension = D3D11_RTV_DIMENSION.D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+        rtv_desc.Texture2DArray.MipSlice = mip;
+        rtv_desc.Texture2DArray.FirstArraySlice = face;
+        rtv_desc.Texture2DArray.ArraySize = 1;
+        rtv: *ID3D11RenderTargetView = null;
+        ID3D11Device_CreateRenderTargetView(device, cast(target[0].texture, *ID3D11Resource), rtv_desc&, rtv&);
+        ID3D11DeviceContext_OMSetRenderTargets(context, 1, rtv&, null);
+        t.view = m4_look_at(v3(0.0, 0.0, 0.0), targets[face], ups[face]);
+        draw_vertices(context, constants, t&, cube_vb, 36, m4_identity());
+        ID3D11RenderTargetView_Release(rtv);
+    }
+}
+
+// the HDR environment as a float texture
+load_hdr: proc(device: *ID3D11Device, path: [*]const char) -> *ID3D11ShaderResourceView = {
+    img: image_hdr = image_load_hdr(path);
+    if (img.pixels == null) {
+        printf("Failed to load HDR image: %s\n", path);
+        exit(1);
+    }
+    desc: D3D11_TEXTURE2D_DESC = {};
+    desc.Width = cast(img.width, UINT);
+    desc.Height = cast(img.height, UINT);
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT;
+    desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    init: D3D11_SUBRESOURCE_DATA = {};
+    init.pSysMem = img.pixels;
+    init.SysMemPitch = cast(img.width * 16, UINT);
+    texture: *ID3D11Texture2D = null;
+    srv: *ID3D11ShaderResourceView = null;
+    ID3D11Device_CreateTexture2D(device, desc&, init&, texture&);
+    ID3D11Device_CreateShaderResourceView(device, cast(texture, *ID3D11Resource), null, srv&);
+    return srv;
+}
+
+main: proc() -> i32 = {
+    // win32: register a window class and create the window
+    // ----------------------------------------------------
+    SetProcessDPIAware();
+    instance: HMODULE = GetModuleHandleA(null);
+    wc: WNDCLASSA = {};
+    wc.lpfnWndProc = window_proc;
+    wc.hInstance = instance;
+    wc.hCursor = LoadCursorA(null, IDC_ARROW);
+    wc.lpszClassName = "LearnD3D11";
+    RegisterClassA(wc&);
+    // A fixed size: the swap chain and every render target keep the size they
+    // were created with, so nothing needs rebuilding on resize.
+    style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    rect: RECT = {};
+    rect.right = scr_width;
+    rect.bottom = scr_height;
+    AdjustWindowRect(rect&, style, 0);
+    window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+                                   rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
+    if (window == null) {
+        printf("Failed to create the window\n");
+        return -1;
+    }
+
+    // d3d11: create the device, its immediate context and a swap chain
+    // ----------------------------------------------------------------
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
+    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
+    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
+    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
+    swap_desc.SampleDesc.Count = 1;
+    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swap_desc.BufferCount = 2;
+    swap_desc.OutputWindow = window;
+    swap_desc.Windowed = 1;
+    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
+    swap_chain: *IDXGISwapChain = null;
+    device: *ID3D11Device = null;
+    context: *ID3D11DeviceContext = null;
+    if (D3D11CreateDeviceAndSwapChain(null, D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE, null, 0, feature_level&, 1, D3D11_SDK_VERSION,
+                                      swap_desc&, swap_chain&, device&, null, context&) < 0) {
+        printf("Failed to create the D3D11 device\n");
+        return -1;
+    }
+    backbuffer: *ID3D11Texture2D = null;
+    IDXGISwapChain_GetBuffer(swap_chain, 0, IID_ID3D11Texture2D&, cast(backbuffer&, **void));
+    // The back buffer is viewed as sRGB: what the shaders write is linear, and
+    // the view gamma-encodes it on the way in (5.2).
+    backbuffer_view: D3D11_RENDER_TARGET_VIEW_DESC = {};
+    backbuffer_view.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    backbuffer_view.ViewDimension = D3D11_RTV_DIMENSION.D3D11_RTV_DIMENSION_TEXTURE2D;
+    backbuffer_rtv: *ID3D11RenderTargetView = null;
+    ID3D11Device_CreateRenderTargetView(device, cast(backbuffer, *ID3D11Resource), backbuffer_view&, backbuffer_rtv&);
+
+    // A depth buffer the size of the window: 24 bits of depth, 8 of stencil.
+    depth_desc: D3D11_TEXTURE2D_DESC = {};
+    depth_desc.Width = cast(scr_width, UINT);
+    depth_desc.Height = cast(scr_height, UINT);
+    depth_desc.MipLevels = 1;
+    depth_desc.ArraySize = 1;
+    depth_desc.Format = DXGI_FORMAT.DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depth_desc.SampleDesc.Count = 1;
+    depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    depth_texture: *ID3D11Texture2D = null;
+    depth_dsv: *ID3D11DepthStencilView = null;
+    ID3D11Device_CreateTexture2D(device, depth_desc&, null, depth_texture&);
+    ID3D11Device_CreateDepthStencilView(device, cast(depth_texture, *ID3D11Resource), null, depth_dsv&);
+
+    // configure global d3d11 state
+    // ----------------------------
+    // GL's conventions rather than D3D's: counter-clockwise triangles face the
+    // viewer, and nothing is culled.
+    raster_desc: D3D11_RASTERIZER_DESC = {};
+    raster_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID;
+    raster_desc.CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE;
+    raster_desc.FrontCounterClockwise = 1;
+    raster_desc.DepthClipEnable = 1;
+    raster_state: *ID3D11RasterizerState = null;
+    ID3D11Device_CreateRasterizerState(device, raster_desc&, raster_state&);
+    ID3D11DeviceContext_RSSetState(context, raster_state);
+    viewport: D3D11_VIEWPORT = {};
+    viewport.Width = cast(scr_width, f32);
+    viewport.Height = cast(scr_height, f32);
+    viewport.MaxDepth = 1.0;
+
+    // A sampler: how textures are filtered and what happens past their edges.
+    sampler_desc: D3D11_SAMPLER_DESC = {};
+    sampler_desc.Filter = D3D11_FILTER.D3D11_FILTER_ANISOTROPIC;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.MaxAnisotropy = 8;
+    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+    sampler: *ID3D11SamplerState = null;
+    ID3D11Device_CreateSamplerState(device, sampler_desc&, sampler&);
+    ID3D11DeviceContext_PSSetSamplers(context, 0, 1, sampler&);
+
+    // build and compile shaders
+    // -------------------------
+    pbr_shader: shader = shader_create(device, filesystem_path("src/6.pbr/2.1.ibl_irradiance/pbr.hlsl"), vertex_layout);
+    equirect_shader: shader = shader_create(device, filesystem_path("src/6.pbr/2.1.ibl_irradiance/equirectangular_to_cubemap.hlsl"), vertex_layout);
+    irradiance_shader: shader = shader_create(device, filesystem_path("src/6.pbr/2.1.ibl_irradiance/irradiance_convolution.hlsl"), vertex_layout);
+    background_shader: shader = shader_create(device, filesystem_path("src/6.pbr/2.1.ibl_irradiance/background.hlsl"), vertex_layout);
+
+    // pbr: the samplers the precomputation passes and the spheres share
+    clamp_desc: D3D11_SAMPLER_DESC = sampler_desc;
+    clamp_desc.Filter = D3D11_FILTER.D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    clamp_desc.AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_CLAMP;
+    clamp_desc.AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_CLAMP;
+    clamp_desc.AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_CLAMP;
+    clamp_sampler: *ID3D11SamplerState = null;
+    ID3D11Device_CreateSamplerState(device, clamp_desc&, clamp_sampler&);
+    ID3D11DeviceContext_PSSetSamplers(context, 1, 1, clamp_sampler&);
+    sky_depth_desc: D3D11_DEPTH_STENCIL_DESC = {};
+    sky_depth_desc.DepthEnable = 1;
+    sky_depth_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK.D3D11_DEPTH_WRITE_MASK_ZERO;
+    sky_depth_desc.DepthFunc = D3D11_COMPARISON_FUNC.D3D11_COMPARISON_LESS_EQUAL;
+    sky_depth: *ID3D11DepthStencilState = null;
+    ID3D11Device_CreateDepthStencilState(device, sky_depth_desc&, sky_depth&);
+
+    // set up vertex data
+    // ------------------
+    arena: memops_arena = {};
+    memops_arena_initialize(arena&);
+    ball: sphere = create_sphere(device, arena&, 64);
+    cube_vb: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, cube_vertices[0]&, sizeof(cube_vertices));
+    transforms_buffer: *ID3D11Buffer = create_constant_buffer(device, sizeof(transforms));
+    material_buffer: *ID3D11Buffer = create_constant_buffer(device, sizeof(material_constants));
+    lights_buffer: *ID3D11Buffer = create_constant_buffer(device, sizeof(lights_constants));
+    ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    bind_constants(context, 0, transforms_buffer);
+
+    // pbr: load the HDR environment map
+    // ---------------------------------
+    hdr_texture: *ID3D11ShaderResourceView = load_hdr(device, filesystem_path("resources/textures/hdr/newport_loft.hdr"));
+
+    // pbr: convert the equirectangular map to a cubemap, with mipmaps (the
+    // prefilter reads them to avoid sparkle from small, very bright spots)
+    // --------------------------------------------------------------------
+    env_cubemap: cube_target = create_cube_target(device, 512, 0, 1);
+    shader_use(context, equirect_shader&);
+    bind_texture(context, 0, hdr_texture);
+    render_to_cube(device, context, env_cubemap&, 0, transforms_buffer, cube_vb);
+    unbind_textures(context);
+    ID3D11DeviceContext_GenerateMips(context, env_cubemap.srv);
+
+    // pbr: an irradiance cubemap, by convolving the environment
+    // ---------------------------------------------------------
+    irradiance_map: cube_target = create_cube_target(device, 32, 1, 0);
+    shader_use(context, irradiance_shader&);
+    bind_texture(context, 0, env_cubemap.srv);
+    render_to_cube(device, context, irradiance_map&, 0, transforms_buffer, cube_vb);
+    unbind_textures(context);
+
+    // lights
+    // ------
+    lights: lights_constants = {};
+    lights.positions[0] = v4(-10.0, 10.0, 10.0, 0.0);
+    lights.positions[1] = v4(10.0, 10.0, 10.0, 0.0);
+    lights.positions[2] = v4(-10.0, -10.0, 10.0, 0.0);
+    lights.positions[3] = v4(10.0, -10.0, 10.0, 0.0);
+    for (i: u32 = 0; i < 4; i += 1) { lights.colors[i] = v4(300.0, 300.0, 300.0, 0.0); }
+    update_buffer(context, lights_buffer, lights&, sizeof(lights_constants));
+    cam = camera_create(v3(0.0, 0.0, 22.0), -90.0, 0.0);
+
+    // render loop
+    // -----------
+    running: b32 = 1;
+    while (running) {
+        msg: MSG = {};
+        while (PeekMessageA(msg&, null, 0, 0, PM_REMOVE) != 0) {
+            if (msg.message == WM_QUIT) { running = 0; }
+            TranslateMessage(msg&);
+            DispatchMessageA(msg&);
+        }
+
+        // per-frame time logic
+        // --------------------
+        current_frame: f32 = get_time();
+        delta_time = current_frame - last_frame;
+        last_frame = current_frame;
+
+        // input
+        // -----
+        process_input(window);
+
+        // render
+        // ------
+        clear_color: [4]f32 = { 0.1, 0.1, 0.1, 1.0 };
+        ID3D11DeviceContext_OMSetRenderTargets(context, 1, backbuffer_rtv&, depth_dsv);
+        ID3D11DeviceContext_RSSetViewports(context, 1, viewport&);
+        ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_rtv, clear_color[0]&);
+        ID3D11DeviceContext_ClearDepthStencilView(context, depth_dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0, 0);
+        ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        bind_constants(context, 0, transforms_buffer);
+        t: transforms = {};
+        t.view = camera_view(cam&);
+        t.projection = m4_perspective(radians(cam.zoom), cast(scr_width, f32) / cast(scr_height, f32), 0.1, 100.0);
+        t.view_position = cam.position;
+        shader_use(context, pbr_shader&);
+        bind_constants(context, 1, material_buffer);
+        bind_constants(context, 2, lights_buffer);
+        bind_texture(context, 0, irradiance_map.srv);
+        m: material_constants = {};
+        m.albedo = v3(0.5, 0.0, 0.0);
+        m.ao = 1.0;
+        // render rows*column number of spheres with varying metallic/roughness values:
+        // metallic from bottom to top, roughness from left to right
+        for (row: i32 = 0; row < 7; row += 1) {
+            for (col: i32 = 0; col < 7; col += 1) {
+                m.metallic = cast(row, f32) / 6.0;
+                // perfectly smooth reflects one point of light, which looks wrong
+                // for a point light: start just above zero
+                m.roughness = clampf(cast(col, f32) / 6.0, 0.05, 1.0);
+                update_buffer(context, material_buffer, m&, sizeof(material_constants));
+                draw_sphere(context, transforms_buffer, t&, ball&, m4_translate(v3(cast(col - 3, f32) * 2.5, cast(row - 3, f32) * 2.5, 0.0)));
+            }
+        }
+
+        // render skybox (render as last to prevent overdraw)
+        shader_use(context, background_shader&);
+        bind_texture(context, 0, env_cubemap.srv);
+        ID3D11DeviceContext_OMSetDepthStencilState(context, sky_depth, 0);
+        draw_vertices(context, transforms_buffer, t&, cube_vb, 36, m4_identity());
+        ID3D11DeviceContext_OMSetDepthStencilState(context, null, 0);
+
+        // dxgi: show the image just drawn, waiting for the next vertical blank
+        // --------------------------------------------------------------------
+        IDXGISwapChain_Present(swap_chain, 1, 0);
+    }
+    return 0;
+}

@@ -1,0 +1,248 @@
+// 3.1 Shaders
+//
+// Two ways to get data into a shader:
+//
+//   * per vertex: each vertex carries a colour, and the rasterizer blends the
+//     three across the triangle on its way to the pixel shader (right)
+//   * per draw: a constant buffer, D3D's uniform. The CPU fills a struct and
+//     copies it in whole with Map; every vertex and pixel of the draw reads the
+//     same values (left: a tint that pulses over time)
+//
+// From here on shaders are loaded by includes/learn/shader.rin, which does
+// what 2.1 wrote out: compile vs_main and ps_main from one .hlsl file and
+// create the input layout against the vertex shader. LearnOpenGL's 3.3
+// shaders_class introduces its Shader class the same way.
+
+import "../../../includes/win32.rin"
+import "../../../includes/math.rin"
+import "../../../includes/learn/shader.rin"
+import "std/print.rin"
+
+// settings
+scr_width: i32 = 1280;
+scr_height: i32 = 720;
+
+// timing
+delta_time: f32 = 0.0;
+last_frame: f32 = 0.0;
+perf_frequency: i64 = 0;
+perf_start: i64 = 0;
+
+// Seconds since the first call: what glfwGetTime is to LearnOpenGL.
+get_time: proc() -> f32 = {
+    now: LARGE_INTEGER = {};
+    if (perf_frequency == 0) {
+        QueryPerformanceFrequency(now&);
+        perf_frequency = now.QuadPart;
+        QueryPerformanceCounter(now&);
+        perf_start = now.QuadPart;
+    }
+    QueryPerformanceCounter(now&);
+    return cast(now.QuadPart - perf_start, f32) / cast(perf_frequency, f32);
+}
+
+// x, y, z, then r, g, b
+left_triangle: [18]f32 = {
+    -0.9, -0.5, 0.0,   1.0, 1.0, 1.0,
+    -0.1, -0.5, 0.0,   1.0, 1.0, 1.0,
+    -0.5,  0.5, 0.0,   1.0, 1.0, 1.0,
+};
+
+right_triangle: [18]f32 = {
+     0.1, -0.5, 0.0,   1.0, 0.0, 0.0,
+     0.9, -0.5, 0.0,   0.0, 1.0, 0.0,
+     0.5,  0.5, 0.0,   0.0, 0.0, 1.0,
+};
+
+layout: [2]D3D11_INPUT_ELEMENT_DESC = {
+    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 0 },
+    { .SemanticName = "COLOR", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT, .AlignedByteOffset = 12 },
+};
+
+// Mirrors `cbuffer frame` in the shader, register for register.
+frame_constants: struct = {
+    tint: vec4;
+}
+
+// win32: every event for the window (keys, mouse, closing) arrives here
+// ---------------------------------------------------------------------
+window_proc: proc[callconv(CALLBACK)](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
+// process all input: ask Windows whether relevant keys are down this frame and react accordingly
+// ----------------------------------------------------------------------------------------------
+// The top bit of GetAsyncKeyState is set while a key is held, which makes the SHORT negative.
+key_down: proc(key: i32) -> b32 = {
+    return GetAsyncKeyState(key) < 0;
+}
+
+process_input: proc(window: HWND) -> void = {
+    // GetAsyncKeyState reads the whole keyboard, so ignore it while another
+    // window has the focus; glfwGetKey only ever sees its own window's keys.
+    if (GetForegroundWindow() != window) { return; }
+    if (key_down(VK_ESCAPE)) { DestroyWindow(window); }
+}
+
+// An immutable buffer: filled once at creation, never written by the CPU again.
+create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: u64) -> *ID3D11Buffer = {
+    desc: D3D11_BUFFER_DESC = {};
+    desc.ByteWidth = cast(size, UINT);
+    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = bind;
+    init: D3D11_SUBRESOURCE_DATA = {};
+    init.pSysMem = data;
+    buffer: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, desc&, init&, buffer&);
+    return buffer;
+}
+
+main: proc() -> i32 = {
+    // win32: register a window class and create the window
+    // ----------------------------------------------------
+    SetProcessDPIAware();
+    instance: HMODULE = GetModuleHandleA(null);
+    wc: WNDCLASSA = {};
+    wc.lpfnWndProc = window_proc;
+    wc.hInstance = instance;
+    wc.hCursor = LoadCursorA(null, IDC_ARROW);
+    wc.lpszClassName = "LearnD3D11";
+    RegisterClassA(wc&);
+    // A fixed size: the swap chain and every render target keep the size they
+    // were created with, so nothing needs rebuilding on resize.
+    style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    rect: RECT = {};
+    rect.right = scr_width;
+    rect.bottom = scr_height;
+    AdjustWindowRect(rect&, style, 0);
+    window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+                                   rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
+    if (window == null) {
+        printf("Failed to create the window\n");
+        return -1;
+    }
+
+    // d3d11: create the device, its immediate context and a swap chain
+    // ----------------------------------------------------------------
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
+    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
+    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
+    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
+    swap_desc.SampleDesc.Count = 1;
+    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swap_desc.BufferCount = 2;
+    swap_desc.OutputWindow = window;
+    swap_desc.Windowed = 1;
+    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
+    swap_chain: *IDXGISwapChain = null;
+    device: *ID3D11Device = null;
+    context: *ID3D11DeviceContext = null;
+    if (D3D11CreateDeviceAndSwapChain(null, D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE, null, 0, feature_level&, 1, D3D11_SDK_VERSION,
+                                      swap_desc&, swap_chain&, device&, null, context&) < 0) {
+        printf("Failed to create the D3D11 device\n");
+        return -1;
+    }
+    backbuffer: *ID3D11Texture2D = null;
+    IDXGISwapChain_GetBuffer(swap_chain, 0, IID_ID3D11Texture2D&, cast(backbuffer&, **void));
+    backbuffer_rtv: *ID3D11RenderTargetView = null;
+    ID3D11Device_CreateRenderTargetView(device, cast(backbuffer, *ID3D11Resource), null, backbuffer_rtv&);
+
+    // configure global d3d11 state
+    // ----------------------------
+    // GL's conventions rather than D3D's: counter-clockwise triangles face the
+    // viewer, and nothing is culled.
+    raster_desc: D3D11_RASTERIZER_DESC = {};
+    raster_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID;
+    raster_desc.CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE;
+    raster_desc.FrontCounterClockwise = 1;
+    raster_desc.DepthClipEnable = 1;
+    raster_state: *ID3D11RasterizerState = null;
+    ID3D11Device_CreateRasterizerState(device, raster_desc&, raster_state&);
+    ID3D11DeviceContext_RSSetState(context, raster_state);
+    viewport: D3D11_VIEWPORT = {};
+    viewport.Width = cast(scr_width, f32);
+    viewport.Height = cast(scr_height, f32);
+    viewport.MaxDepth = 1.0;
+
+    // build and compile our shader program
+    // ------------------------------------
+    s: shader = shader_create(device, filesystem_path("src/1.getting_started/3.1.shaders/shaders.hlsl"), layout);
+
+    // set up vertex data
+    // ------------------
+    left_vb: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, left_triangle[0]&, sizeof(left_triangle));
+    right_vb: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, right_triangle[0]&, sizeof(right_triangle));
+    stride: UINT = 24;
+    offset: UINT = 0;
+
+    // A dynamic constant buffer: the CPU may rewrite it. Its size must be a
+    // multiple of 16 bytes, the size of one HLSL register.
+    constants_desc: D3D11_BUFFER_DESC = {};
+    constants_desc.ByteWidth = sizeof(frame_constants);
+    constants_desc.Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC;
+    constants_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    constants_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    constants: *ID3D11Buffer = null;
+    ID3D11Device_CreateBuffer(device, constants_desc&, null, constants&);
+
+    // render loop
+    // -----------
+    running: b32 = 1;
+    while (running) {
+        msg: MSG = {};
+        while (PeekMessageA(msg&, null, 0, 0, PM_REMOVE) != 0) {
+            if (msg.message == WM_QUIT) { running = 0; }
+            TranslateMessage(msg&);
+            DispatchMessageA(msg&);
+        }
+
+        // per-frame time logic
+        // --------------------
+        current_frame: f32 = get_time();
+        delta_time = current_frame - last_frame;
+        last_frame = current_frame;
+
+        // input
+        // -----
+        process_input(window);
+
+        // render
+        // ------
+        clear_color: [4]f32 = { 0.2, 0.3, 0.3, 1.0 };
+        ID3D11DeviceContext_OMSetRenderTargets(context, 1, backbuffer_rtv&, null);
+        ID3D11DeviceContext_RSSetViewports(context, 1, viewport&);
+        ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_rtv, clear_color[0]&);
+
+        shader_use(context, s&);
+        ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ID3D11DeviceContext_PSSetConstantBuffers(context, 0, 1, constants&);
+
+        // WRITE_DISCARD hands back fresh memory each time, so the GPU never
+        // waits on the CPU, and the previous draw keeps the values it saw.
+        c: frame_constants = {};
+        c.tint = v4(0.0, sinf(current_frame) * 0.5 + 0.5, 0.0, 1.0);
+        mapped: D3D11_MAPPED_SUBRESOURCE = {};
+        ID3D11DeviceContext_Map(context, cast(constants, *ID3D11Resource), 0, D3D11_MAP.D3D11_MAP_WRITE_DISCARD, 0, mapped&);
+        memcpy(mapped.pData, c&, sizeof(frame_constants));
+        ID3D11DeviceContext_Unmap(context, cast(constants, *ID3D11Resource), 0);
+        ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, left_vb&, stride&, offset&);
+        ID3D11DeviceContext_Draw(context, 3, 0);
+
+        c.tint = v4(1.0, 1.0, 1.0, 1.0);
+        ID3D11DeviceContext_Map(context, cast(constants, *ID3D11Resource), 0, D3D11_MAP.D3D11_MAP_WRITE_DISCARD, 0, mapped&);
+        memcpy(mapped.pData, c&, sizeof(frame_constants));
+        ID3D11DeviceContext_Unmap(context, cast(constants, *ID3D11Resource), 0);
+        ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, right_vb&, stride&, offset&);
+        ID3D11DeviceContext_Draw(context, 3, 0);
+
+        // dxgi: show the image just drawn, waiting for the next vertical blank
+        // --------------------------------------------------------------------
+        IDXGISwapChain_Present(swap_chain, 1, 0);
+    }
+    return 0;
+}

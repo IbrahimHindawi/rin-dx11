@@ -1,0 +1,55 @@
+// How the lessons are built. Read by `rin build`, not executed.
+//
+// Every lesson is its own program, named after its file.
+build_name:      [*]const char = "rin-dx11";
+build_dir:       [*]const char = "build";
+build_generator: [*]const char = "Ninja";
+build_compiler:  [*]const char = "clang-cl";
+build_type:      [*]const char = "Debug";
+
+build_entries: [38][*]const char = {
+    "src/1.getting_started/1.1.hello_window/hello_window.rin",
+    "src/1.getting_started/2.1.hello_triangle/hello_triangle.rin",
+    "src/1.getting_started/3.1.shaders/shaders.rin",
+    "src/1.getting_started/4.1.textures/textures.rin",
+    "src/1.getting_started/5.1.transformations/transformations.rin",
+    "src/1.getting_started/6.1.coordinate_systems/coordinate_systems.rin",
+    "src/1.getting_started/7.1.camera/camera.rin",
+    "src/2.lighting/1.colors/colors.rin",
+    "src/2.lighting/2.1.basic_lighting/basic_lighting.rin",
+    "src/2.lighting/3.1.materials/materials.rin",
+    "src/2.lighting/4.1.lighting_maps/lighting_maps.rin",
+    "src/2.lighting/5.1.light_casters/light_casters.rin",
+    "src/2.lighting/6.multiple_lights/multiple_lights.rin",
+    "src/3.model_loading/1.model_loading/model_loading.rin",
+    "src/4.advanced_d3d11/1.1.depth_testing/depth_testing.rin",
+    "src/4.advanced_d3d11/2.stencil_testing/stencil_testing.rin",
+    "src/4.advanced_d3d11/3.1.blending/blending.rin",
+    "src/4.advanced_d3d11/4.face_culling/face_culling.rin",
+    "src/4.advanced_d3d11/5.1.framebuffers/framebuffers.rin",
+    "src/4.advanced_d3d11/6.1.cubemaps/cubemaps.rin",
+    "src/4.advanced_d3d11/7.advanced_data/advanced_data.rin",
+    "src/4.advanced_d3d11/8.advanced_hlsl/advanced_hlsl.rin",
+    "src/4.advanced_d3d11/9.1.geometry_shader/geometry_shader.rin",
+    "src/4.advanced_d3d11/10.1.instancing/instancing.rin",
+    "src/4.advanced_d3d11/11.1.anti_aliasing/anti_aliasing.rin",
+    "src/5.advanced_lighting/1.advanced_lighting/advanced_lighting.rin",
+    "src/5.advanced_lighting/2.gamma_correction/gamma_correction.rin",
+    "src/5.advanced_lighting/3.1.shadow_mapping/shadow_mapping.rin",
+    "src/5.advanced_lighting/3.2.point_shadows/point_shadows.rin",
+    "src/5.advanced_lighting/4.normal_mapping/normal_mapping.rin",
+    "src/5.advanced_lighting/5.1.parallax_mapping/parallax_mapping.rin",
+    "src/5.advanced_lighting/6.hdr/hdr.rin",
+    "src/5.advanced_lighting/7.bloom/bloom.rin",
+    "src/5.advanced_lighting/8.1.deferred_shading/deferred_shading.rin",
+    "src/5.advanced_lighting/9.ssao/ssao.rin",
+    "src/6.pbr/1.1.lighting/lighting.rin",
+    "src/6.pbr/2.1.ibl_irradiance/ibl_irradiance.rin",
+    "src/6.pbr/2.2.ibl_specular/ibl_specular.rin",
+};
+
+build_defines: [1][*]const char = { "_CRT_SECURE_NO_WARNINGS" };
+
+build_libraries: [7][*]const char = {
+    "user32", "d3d11", "dxgi", "d3dcompiler", "dxguid", "ole32", "windowscodecs",
+};

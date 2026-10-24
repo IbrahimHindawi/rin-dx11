@@ -1,0 +1,282 @@
+// Vectors and 4x4 matrices: what glm is to LearnOpenGL.
+//
+// Conventions, chosen to match the maths in LearnOpenGL so its formulas carry
+// over unchanged:
+//
+//   * right-handed world: +x right, +y up, the camera looks down -z
+//   * column vectors: a point is transformed as `M * p`, so `T * R * S`
+//     scales first and translates last
+//   * clip-space depth runs 0..1, which is D3D's range (GL's is -1..1)
+//
+// A mat4 is stored row by row, `m[row * 4 + col]`. Every shader starts with
+// `#pragma pack_matrix(row_major)`, which makes HLSL read the constant buffer
+// the same way, so `mul(M, v)` in a shader is exactly `M * v` here.
+
+cinclude "math.h"
+
+sqrtf: proc[external](x: f32) -> f32 = {}
+sinf: proc[external](x: f32) -> f32 = {}
+cosf: proc[external](x: f32) -> f32 = {}
+tanf: proc[external](x: f32) -> f32 = {}
+powf: proc[external](x: f32, y: f32) -> f32 = {}
+fabsf: proc[external](x: f32) -> f32 = {}
+floorf: proc[external](x: f32) -> f32 = {}
+fminf: proc[external](a: f32, b: f32) -> f32 = {}
+fmaxf: proc[external](a: f32, b: f32) -> f32 = {}
+
+pi: f32 = 3.14159265358979;
+
+radians: proc(degrees: f32) -> f32 = {
+    return degrees * pi / 180.0;
+}
+
+clampf: proc(x: f32, lo: f32, hi: f32) -> f32 = {
+    return fminf(fmaxf(x, lo), hi);
+}
+
+lerpf: proc(a: f32, b: f32, t: f32) -> f32 = {
+    return a + (b - a) * t;
+}
+
+vec2: struct = {
+    x: f32;
+    y: f32;
+}
+
+vec3: struct = {
+    x: f32;
+    y: f32;
+    z: f32;
+}
+
+vec4: struct = {
+    x: f32;
+    y: f32;
+    z: f32;
+    w: f32;
+}
+
+mat4: struct = {
+    m: [16]f32;
+}
+
+v2: proc(x: f32, y: f32) -> vec2 = {
+    return { .x = x, .y = y };
+}
+
+v3: proc(x: f32, y: f32, z: f32) -> vec3 = {
+    return { .x = x, .y = y, .z = z };
+}
+
+v4: proc(x: f32, y: f32, z: f32, w: f32) -> vec4 = {
+    return { .x = x, .y = y, .z = z, .w = w };
+}
+
+v3_add: proc(a: vec3, b: vec3) -> vec3 = {
+    return v3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+v3_sub: proc(a: vec3, b: vec3) -> vec3 = {
+    return v3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+v3_mul: proc(a: vec3, b: vec3) -> vec3 = {
+    return v3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
+v3_scale: proc(a: vec3, s: f32) -> vec3 = {
+    return v3(a.x * s, a.y * s, a.z * s);
+}
+
+v3_dot: proc(a: vec3, b: vec3) -> f32 = {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+v3_cross: proc(a: vec3, b: vec3) -> vec3 = {
+    return v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+}
+
+v3_length: proc(a: vec3) -> f32 = {
+    return sqrtf(v3_dot(a, a));
+}
+
+v3_normalize: proc(a: vec3) -> vec3 = {
+    len: f32 = v3_length(a);
+    if (len == 0.0) { return a; }
+    return v3_scale(a, 1.0 / len);
+}
+
+v3_lerp: proc(a: vec3, b: vec3, t: f32) -> vec3 = {
+    return v3(lerpf(a.x, b.x, t), lerpf(a.y, b.y, t), lerpf(a.z, b.z, t));
+}
+
+m4_identity: proc() -> mat4 = {
+    r: mat4 = {};
+    r.m[0] = 1.0;
+    r.m[5] = 1.0;
+    r.m[10] = 1.0;
+    r.m[15] = 1.0;
+    return r;
+}
+
+m4_mul: proc(a: mat4, b: mat4) -> mat4 = {
+    r: mat4 = {};
+    for (row: i32 = 0; row < 4; row += 1) {
+        for (col: i32 = 0; col < 4; col += 1) {
+            sum: f32 = 0.0;
+            for (k: i32 = 0; k < 4; k += 1) {
+                sum += a.m[row * 4 + k] * b.m[k * 4 + col];
+            }
+            r.m[row * 4 + col] = sum;
+        }
+    }
+    return r;
+}
+
+m4_mul_v4: proc(a: mat4, v: vec4) -> vec4 = {
+    return v4(a.m[0] * v.x + a.m[1] * v.y + a.m[2] * v.z + a.m[3] * v.w,
+              a.m[4] * v.x + a.m[5] * v.y + a.m[6] * v.z + a.m[7] * v.w,
+              a.m[8] * v.x + a.m[9] * v.y + a.m[10] * v.z + a.m[11] * v.w,
+              a.m[12] * v.x + a.m[13] * v.y + a.m[14] * v.z + a.m[15] * v.w);
+}
+
+m4_transpose: proc(a: mat4) -> mat4 = {
+    r: mat4 = {};
+    for (row: i32 = 0; row < 4; row += 1) {
+        for (col: i32 = 0; col < 4; col += 1) {
+            r.m[col * 4 + row] = a.m[row * 4 + col];
+        }
+    }
+    return r;
+}
+
+m4_translate: proc(t: vec3) -> mat4 = {
+    r: mat4 = m4_identity();
+    r.m[3] = t.x;
+    r.m[7] = t.y;
+    r.m[11] = t.z;
+    return r;
+}
+
+m4_scale: proc(s: vec3) -> mat4 = {
+    r: mat4 = m4_identity();
+    r.m[0] = s.x;
+    r.m[5] = s.y;
+    r.m[10] = s.z;
+    return r;
+}
+
+// A rotation of `angle` radians about `axis`, counter-clockwise when looking
+// down the axis towards the origin.
+m4_rotate: proc(angle: f32, axis: vec3) -> mat4 = {
+    a: vec3 = v3_normalize(axis);
+    c: f32 = cosf(angle);
+    s: f32 = sinf(angle);
+    t: f32 = 1.0 - c;
+    r: mat4 = m4_identity();
+    r.m[0] = c + a.x * a.x * t;
+    r.m[1] = a.x * a.y * t - a.z * s;
+    r.m[2] = a.x * a.z * t + a.y * s;
+    r.m[4] = a.y * a.x * t + a.z * s;
+    r.m[5] = c + a.y * a.y * t;
+    r.m[6] = a.y * a.z * t - a.x * s;
+    r.m[8] = a.z * a.x * t - a.y * s;
+    r.m[9] = a.z * a.y * t + a.x * s;
+    r.m[10] = c + a.z * a.z * t;
+    return r;
+}
+
+// Right-handed perspective onto D3D's 0..1 depth range.
+// (`near` and `far` are empty macros in windows.h, so the planes are z_near/z_far.)
+m4_perspective: proc(fovy: f32, aspect: f32, z_near: f32, z_far: f32) -> mat4 = {
+    f: f32 = 1.0 / tanf(fovy * 0.5);
+    r: mat4 = {};
+    r.m[0] = f / aspect;
+    r.m[5] = f;
+    r.m[10] = z_far / (z_near - z_far);
+    r.m[11] = z_near * z_far / (z_near - z_far);
+    r.m[14] = -1.0;
+    return r;
+}
+
+// Right-handed orthographic projection onto 0..1 depth.
+m4_ortho: proc(left: f32, right: f32, bottom: f32, top: f32, z_near: f32, z_far: f32) -> mat4 = {
+    r: mat4 = m4_identity();
+    r.m[0] = 2.0 / (right - left);
+    r.m[3] = -(right + left) / (right - left);
+    r.m[5] = 2.0 / (top - bottom);
+    r.m[7] = -(top + bottom) / (top - bottom);
+    r.m[10] = 1.0 / (z_near - z_far);
+    r.m[11] = z_near / (z_near - z_far);
+    return r;
+}
+
+// The view matrix of a camera at `eye` looking at `target`.
+m4_look_at: proc(eye: vec3, target: vec3, up: vec3) -> mat4 = {
+    f: vec3 = v3_normalize(v3_sub(target, eye));
+    s: vec3 = v3_normalize(v3_cross(f, up));
+    u: vec3 = v3_cross(s, f);
+    r: mat4 = m4_identity();
+    r.m[0] = s.x;
+    r.m[1] = s.y;
+    r.m[2] = s.z;
+    r.m[3] = -v3_dot(s, eye);
+    r.m[4] = u.x;
+    r.m[5] = u.y;
+    r.m[6] = u.z;
+    r.m[7] = -v3_dot(u, eye);
+    r.m[8] = -f.x;
+    r.m[9] = -f.y;
+    r.m[10] = -f.z;
+    r.m[11] = v3_dot(f, eye);
+    return r;
+}
+
+// The view matrix with its translation removed: what a skybox is drawn with,
+// so it turns with the camera but never gets closer.
+m4_without_translation: proc(a: mat4) -> mat4 = {
+    r: mat4 = a;
+    r.m[3] = 0.0;
+    r.m[7] = 0.0;
+    r.m[11] = 0.0;
+    r.m[12] = 0.0;
+    r.m[13] = 0.0;
+    r.m[14] = 0.0;
+    r.m[15] = 1.0;
+    return r;
+}
+
+// General inverse by cofactors. Used for normal matrices; a singular matrix
+// comes back unchanged.
+m4_inverse: proc(a: mat4) -> mat4 = {
+    m: [*]const f32 = a.m[0]&;
+    inv: mat4 = {};
+    inv.m[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv.m[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv.m[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv.m[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv.m[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv.m[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv.m[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv.m[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv.m[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv.m[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv.m[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv.m[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv.m[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv.m[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv.m[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv.m[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    det: f32 = m[0] * inv.m[0] + m[1] * inv.m[4] + m[2] * inv.m[8] + m[3] * inv.m[12];
+    if (det == 0.0) { return a; }
+    for (i: i32 = 0; i < 16; i += 1) {
+        inv.m[i] = inv.m[i] / det;
+    }
+    return inv;
+}
+
+// What normals are transformed by: the inverse transpose of the model matrix,
+// so a non-uniform scale does not tilt them.
+m4_normal_matrix: proc(model: mat4) -> mat4 = {
+    return m4_transpose(m4_inverse(model));
+}
