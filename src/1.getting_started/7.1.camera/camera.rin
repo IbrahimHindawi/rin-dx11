@@ -172,12 +172,12 @@ process_input: proc(window: HWND) -> void = {
 
 // An immutable buffer: filled once at creation, never written by the CPU again.
 create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: u64) -> *ID3D11Buffer = {
-    desc: D3D11_BUFFER_DESC = {};
-    desc.ByteWidth = cast(size, UINT);
-    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
-    desc.BindFlags = bind;
-    init: D3D11_SUBRESOURCE_DATA = {};
-    init.pSysMem = data;
+    desc: D3D11_BUFFER_DESC = {
+        .ByteWidth = cast(size, UINT),
+        .Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE,
+        .BindFlags = bind,
+    };
+    init: D3D11_SUBRESOURCE_DATA = { .pSysMem = data };
     buffer: *ID3D11Buffer = null;
     ID3D11Device_CreateBuffer(device, desc&, init&, buffer&);
     return buffer;
@@ -186,11 +186,12 @@ create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: 
 // A constant buffer the CPU rewrites, usually every frame. Its size must be a
 // multiple of 16 bytes, the size of one HLSL register.
 create_constant_buffer: proc(device: *ID3D11Device, size: u64) -> *ID3D11Buffer = {
-    desc: D3D11_BUFFER_DESC = {};
-    desc.ByteWidth = cast(size, UINT);
-    desc.Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC;
-    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    desc: D3D11_BUFFER_DESC = {
+        .ByteWidth = cast(size, UINT),
+        .Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC,
+        .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+        .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
+    };
     buffer: *ID3D11Buffer = null;
     ID3D11Device_CreateBuffer(device, desc&, null, buffer&);
     return buffer;
@@ -222,16 +223,17 @@ load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [
         printf("Texture failed to load at path: %s\n", path);
         exit(1);
     }
-    desc: D3D11_TEXTURE2D_DESC = {};
-    desc.Width = cast(img.width, UINT);
-    desc.Height = cast(img.height, UINT);
-    desc.MipLevels = 0;   // the whole chain
-    desc.ArraySize = 1;
-    desc.Format = srgb ? DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    // Generating mips draws into the texture, so it is a render target too.
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(img.width, UINT),
+        .Height = cast(img.height, UINT),
+        .MipLevels = 0,   // the whole chain
+        .ArraySize = 1,
+        .Format = srgb ? DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+        .SampleDesc = { .Count = 1 },
+        // Generating mips draws into the texture, so it is a render target too.
+        .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+        .MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS,
+    };
     texture: *ID3D11Texture2D = null;
     srv: *ID3D11ShaderResourceView = null;
     ID3D11Device_CreateTexture2D(device, desc&, null, texture&);
@@ -246,18 +248,17 @@ main: proc() -> i32 = {
     // ----------------------------------------------------
     SetProcessDPIAware();
     instance: HMODULE = GetModuleHandleA(null);
-    wc: WNDCLASSA = {};
-    wc.lpfnWndProc = window_proc;
-    wc.hInstance = instance;
-    wc.hCursor = LoadCursorA(null, IDC_ARROW);
-    wc.lpszClassName = "LearnD3D11";
+    wc: WNDCLASSA = {
+        .lpfnWndProc = window_proc,
+        .hInstance = instance,
+        .hCursor = LoadCursorA(null, IDC_ARROW),
+        .lpszClassName = "LearnD3D11",
+    };
     RegisterClassA(wc&);
     // A fixed size: the swap chain and every render target keep the size they
     // were created with, so nothing needs rebuilding on resize.
     style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
-    rect: RECT = {};
-    rect.right = scr_width;
-    rect.bottom = scr_height;
+    rect: RECT = { .right = scr_width, .bottom = scr_height };
     AdjustWindowRect(rect&, style, 0);
     window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
                                    rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
@@ -268,16 +269,19 @@ main: proc() -> i32 = {
 
     // d3d11: create the device, its immediate context and a swap chain
     // ----------------------------------------------------------------
-    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
-    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
-    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
-    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    swap_desc.SampleDesc.Count = 1;
-    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    swap_desc.BufferCount = 2;
-    swap_desc.OutputWindow = window;
-    swap_desc.Windowed = 1;
-    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {
+        .BufferDesc = {
+            .Width = cast(scr_width, UINT),
+            .Height = cast(scr_height, UINT),
+            .Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+        },
+        .SampleDesc = { .Count = 1 },
+        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+        .BufferCount = 2,
+        .OutputWindow = window,
+        .Windowed = 1,
+        .SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD,
+    };
     feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
     swap_chain: *IDXGISwapChain = null;
     device: *ID3D11Device = null;
@@ -293,14 +297,15 @@ main: proc() -> i32 = {
     ID3D11Device_CreateRenderTargetView(device, cast(backbuffer, *ID3D11Resource), null, backbuffer_rtv&);
 
     // A depth buffer the size of the window: 24 bits of depth, 8 of stencil.
-    depth_desc: D3D11_TEXTURE2D_DESC = {};
-    depth_desc.Width = cast(scr_width, UINT);
-    depth_desc.Height = cast(scr_height, UINT);
-    depth_desc.MipLevels = 1;
-    depth_desc.ArraySize = 1;
-    depth_desc.Format = DXGI_FORMAT.DXGI_FORMAT_D24_UNORM_S8_UINT;
-    depth_desc.SampleDesc.Count = 1;
-    depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    depth_desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(scr_width, UINT),
+        .Height = cast(scr_height, UINT),
+        .MipLevels = 1,
+        .ArraySize = 1,
+        .Format = DXGI_FORMAT.DXGI_FORMAT_D24_UNORM_S8_UINT,
+        .SampleDesc = { .Count = 1 },
+        .BindFlags = D3D11_BIND_DEPTH_STENCIL,
+    };
     depth_texture: *ID3D11Texture2D = null;
     depth_dsv: *ID3D11DepthStencilView = null;
     ID3D11Device_CreateTexture2D(device, depth_desc&, null, depth_texture&);
@@ -310,27 +315,30 @@ main: proc() -> i32 = {
     // ----------------------------
     // GL's conventions rather than D3D's: counter-clockwise triangles face the
     // viewer, and nothing is culled.
-    raster_desc: D3D11_RASTERIZER_DESC = {};
-    raster_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID;
-    raster_desc.CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE;
-    raster_desc.FrontCounterClockwise = 1;
-    raster_desc.DepthClipEnable = 1;
+    raster_desc: D3D11_RASTERIZER_DESC = {
+        .FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID,
+        .CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE,
+        .FrontCounterClockwise = 1,
+        .DepthClipEnable = 1,
+    };
     raster_state: *ID3D11RasterizerState = null;
     ID3D11Device_CreateRasterizerState(device, raster_desc&, raster_state&);
     ID3D11DeviceContext_RSSetState(context, raster_state);
-    viewport: D3D11_VIEWPORT = {};
-    viewport.Width = cast(scr_width, f32);
-    viewport.Height = cast(scr_height, f32);
-    viewport.MaxDepth = 1.0;
+    viewport: D3D11_VIEWPORT = {
+        .Width = cast(scr_width, f32),
+        .Height = cast(scr_height, f32),
+        .MaxDepth = 1.0,
+    };
 
     // A sampler: how textures are filtered and what happens past their edges.
-    sampler_desc: D3D11_SAMPLER_DESC = {};
-    sampler_desc.Filter = D3D11_FILTER.D3D11_FILTER_ANISOTROPIC;
-    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.MaxAnisotropy = 8;
-    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+    sampler_desc: D3D11_SAMPLER_DESC = {
+        .Filter = D3D11_FILTER.D3D11_FILTER_ANISOTROPIC,
+        .AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP,
+        .AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP,
+        .AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP,
+        .MaxAnisotropy = 8,
+        .MaxLOD = D3D11_FLOAT32_MAX,
+    };
     sampler: *ID3D11SamplerState = null;
     ID3D11Device_CreateSamplerState(device, sampler_desc&, sampler&);
     ID3D11DeviceContext_PSSetSamplers(context, 0, 1, sampler&);
@@ -386,9 +394,10 @@ main: proc() -> i32 = {
         ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, cube_vb&, stride&, offset&);
 
-        c: object_constants = {};
-        c.view = camera_view(cam&);
-        c.projection = m4_perspective(radians(cam.zoom), cast(scr_width, f32) / cast(scr_height, f32), 0.1, 100.0);
+        c: object_constants = {
+            .view = camera_view(cam&),
+            .projection = m4_perspective(radians(cam.zoom), cast(scr_width, f32) / cast(scr_height, f32), 0.1, 100.0),
+        };
         for (i: u32 = 0; i < 10; i += 1) {
             c.model = m4_mul(m4_translate(cube_positions[i]), m4_rotate(radians(20.0 * cast(i, f32)), v3(1.0, 0.3, 0.5)));
             update_buffer(context, constants, c&, sizeof(object_constants));

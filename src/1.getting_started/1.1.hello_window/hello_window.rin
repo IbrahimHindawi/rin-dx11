@@ -48,18 +48,17 @@ main: proc() -> i32 = {
     // ----------------------------------------------------
     SetProcessDPIAware();
     instance: HMODULE = GetModuleHandleA(null);
-    wc: WNDCLASSA = {};
-    wc.lpfnWndProc = window_proc;
-    wc.hInstance = instance;
-    wc.hCursor = LoadCursorA(null, IDC_ARROW);
-    wc.lpszClassName = "LearnD3D11";
+    wc: WNDCLASSA = {
+        .lpfnWndProc = window_proc,
+        .hInstance = instance,
+        .hCursor = LoadCursorA(null, IDC_ARROW),
+        .lpszClassName = "LearnD3D11",
+    };
     RegisterClassA(wc&);
     // A fixed size: the swap chain and every render target keep the size they
     // were created with, so nothing needs rebuilding on resize.
     style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
-    rect: RECT = {};
-    rect.right = scr_width;
-    rect.bottom = scr_height;
+    rect: RECT = { .right = scr_width, .bottom = scr_height };
     AdjustWindowRect(rect&, style, 0);
     window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
                                    rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
@@ -70,16 +69,19 @@ main: proc() -> i32 = {
 
     // d3d11: create the device, its immediate context and a swap chain
     // ----------------------------------------------------------------
-    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
-    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
-    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
-    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    swap_desc.SampleDesc.Count = 1;
-    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    swap_desc.BufferCount = 2;
-    swap_desc.OutputWindow = window;
-    swap_desc.Windowed = 1;
-    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {
+        .BufferDesc = {
+            .Width = cast(scr_width, UINT),
+            .Height = cast(scr_height, UINT),
+            .Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+        },
+        .SampleDesc = { .Count = 1 },
+        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+        .BufferCount = 2,
+        .OutputWindow = window,
+        .Windowed = 1,
+        .SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD,
+    };
     feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
     swap_chain: *IDXGISwapChain = null;
     device: *ID3D11Device = null;

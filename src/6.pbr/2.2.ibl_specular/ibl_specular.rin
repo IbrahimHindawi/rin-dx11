@@ -198,12 +198,12 @@ process_input: proc(window: HWND) -> void = {
 
 // An immutable buffer: filled once at creation, never written by the CPU again.
 create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: u64) -> *ID3D11Buffer = {
-    desc: D3D11_BUFFER_DESC = {};
-    desc.ByteWidth = cast(size, UINT);
-    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
-    desc.BindFlags = bind;
-    init: D3D11_SUBRESOURCE_DATA = {};
-    init.pSysMem = data;
+    desc: D3D11_BUFFER_DESC = {
+        .ByteWidth = cast(size, UINT),
+        .Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE,
+        .BindFlags = bind,
+    };
+    init: D3D11_SUBRESOURCE_DATA = { .pSysMem = data };
     buffer: *ID3D11Buffer = null;
     ID3D11Device_CreateBuffer(device, desc&, init&, buffer&);
     return buffer;
@@ -212,11 +212,12 @@ create_buffer: proc(device: *ID3D11Device, bind: UINT, data: *const void, size: 
 // A constant buffer the CPU rewrites, usually every frame. Its size must be a
 // multiple of 16 bytes, the size of one HLSL register.
 create_constant_buffer: proc(device: *ID3D11Device, size: u64) -> *ID3D11Buffer = {
-    desc: D3D11_BUFFER_DESC = {};
-    desc.ByteWidth = cast(size, UINT);
-    desc.Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC;
-    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    desc: D3D11_BUFFER_DESC = {
+        .ByteWidth = cast(size, UINT),
+        .Usage = D3D11_USAGE.D3D11_USAGE_DYNAMIC,
+        .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+        .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
+    };
     buffer: *ID3D11Buffer = null;
     ID3D11Device_CreateBuffer(device, desc&, null, buffer&);
     return buffer;
@@ -248,16 +249,17 @@ load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [
         printf("Texture failed to load at path: %s\n", path);
         exit(1);
     }
-    desc: D3D11_TEXTURE2D_DESC = {};
-    desc.Width = cast(img.width, UINT);
-    desc.Height = cast(img.height, UINT);
-    desc.MipLevels = 0;   // the whole chain
-    desc.ArraySize = 1;
-    desc.Format = srgb ? DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    // Generating mips draws into the texture, so it is a render target too.
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(img.width, UINT),
+        .Height = cast(img.height, UINT),
+        .MipLevels = 0,   // the whole chain
+        .ArraySize = 1,
+        .Format = srgb ? DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+        .SampleDesc = { .Count = 1 },
+        // Generating mips draws into the texture, so it is a render target too.
+        .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+        .MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS,
+    };
     texture: *ID3D11Texture2D = null;
     srv: *ID3D11ShaderResourceView = null;
     ID3D11Device_CreateTexture2D(device, desc&, null, texture&);
@@ -324,10 +326,11 @@ create_sphere: proc(device: *ID3D11Device, arena: *memops_arena, segments: u32) 
             }
         }
     }
-    s: sphere = {};
-    s.vertices = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, vertices, cast(ring * ring * 8, u64) * 4);
-    s.indices = create_buffer(device, D3D11_BIND_INDEX_BUFFER, indices, cast(n, u64) * 4);
-    s.index_count = n;
+    s: sphere = {
+        .vertices = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, vertices, cast(ring * ring * 8, u64) * 4),
+        .indices = create_buffer(device, D3D11_BIND_INDEX_BUFFER, indices, cast(n, u64) * 4),
+        .index_count = n,
+    };
     return s;
 }
 
@@ -361,23 +364,24 @@ cube_target: struct = {
 }
 
 create_cube_target: proc(device: *ID3D11Device, size: i32, mips: UINT, generate_mips: b32) -> cube_target = {
-    t: cube_target = {};
-    t.size = size;
-    desc: D3D11_TEXTURE2D_DESC = {};
-    desc.Width = cast(size, UINT);
-    desc.Height = cast(size, UINT);
-    desc.MipLevels = mips;
-    desc.ArraySize = 6;
-    desc.Format = DXGI_FORMAT.DXGI_FORMAT_R16G16B16A16_FLOAT;
-    desc.SampleDesc.Count = 1;
-    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+    t: cube_target = { .size = size };
+    desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(size, UINT),
+        .Height = cast(size, UINT),
+        .MipLevels = mips,
+        .ArraySize = 6,
+        .Format = DXGI_FORMAT.DXGI_FORMAT_R16G16B16A16_FLOAT,
+        .SampleDesc = { .Count = 1 },
+        .BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+        .MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE,
+    };
     if (generate_mips) { desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | D3D11_RESOURCE_MISC_GENERATE_MIPS; }
     ID3D11Device_CreateTexture2D(device, desc&, null, t.texture&);
-    view: D3D11_SHADER_RESOURCE_VIEW_DESC = {};
-    view.Format = desc.Format;
-    view.ViewDimension = D3D11_SRV_DIMENSION.D3D11_SRV_DIMENSION_TEXTURECUBE;
-    view.TextureCube.MipLevels = 0xffffffff;   // all of them
+    view: D3D11_SHADER_RESOURCE_VIEW_DESC = {
+        .Format = desc.Format,
+        .ViewDimension = D3D11_SRV_DIMENSION.D3D11_SRV_DIMENSION_TEXTURECUBE,
+        .TextureCube = { .MipLevels = 0xffffffff },   // all of them
+    };
     ID3D11Device_CreateShaderResourceView(device, cast(t.texture, *ID3D11Resource), view&, t.srv&);
     return t;
 }
@@ -392,21 +396,22 @@ render_to_cube: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, targe
                      constants: *ID3D11Buffer, cube_vb: *ID3D11Buffer) -> void = {
     targets: [6]vec3 = { v3(1.0, 0.0, 0.0), v3(-1.0, 0.0, 0.0), v3(0.0, 1.0, 0.0), v3(0.0, -1.0, 0.0), v3(0.0, 0.0, 1.0), v3(0.0, 0.0, -1.0) };
     ups: [6]vec3 = { v3(0.0, -1.0, 0.0), v3(0.0, -1.0, 0.0), v3(0.0, 0.0, 1.0), v3(0.0, 0.0, -1.0), v3(0.0, -1.0, 0.0), v3(0.0, -1.0, 0.0) };
-    t: transforms = {};
-    t.projection = m4_mul(m4_scale(v3(1.0, -1.0, 1.0)), m4_perspective(radians(90.0), 1.0, 0.1, 10.0));
+    t: transforms = {
+        .projection = m4_mul(m4_scale(v3(1.0, -1.0, 1.0)), m4_perspective(radians(90.0), 1.0, 0.1, 10.0)),
+    };
     size: i32 = target[0].size shr cast(mip, i32);
-    viewport: D3D11_VIEWPORT = {};
-    viewport.Width = cast(size, f32);
-    viewport.Height = cast(size, f32);
-    viewport.MaxDepth = 1.0;
+    viewport: D3D11_VIEWPORT = {
+        .Width = cast(size, f32),
+        .Height = cast(size, f32),
+        .MaxDepth = 1.0,
+    };
     ID3D11DeviceContext_RSSetViewports(context, 1, viewport&);
     for (face: UINT = 0; face < 6; face += 1) {
-        rtv_desc: D3D11_RENDER_TARGET_VIEW_DESC = {};
-        rtv_desc.Format = DXGI_FORMAT.DXGI_FORMAT_R16G16B16A16_FLOAT;
-        rtv_desc.ViewDimension = D3D11_RTV_DIMENSION.D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
-        rtv_desc.Texture2DArray.MipSlice = mip;
-        rtv_desc.Texture2DArray.FirstArraySlice = face;
-        rtv_desc.Texture2DArray.ArraySize = 1;
+        rtv_desc: D3D11_RENDER_TARGET_VIEW_DESC = {
+            .Format = DXGI_FORMAT.DXGI_FORMAT_R16G16B16A16_FLOAT,
+            .ViewDimension = D3D11_RTV_DIMENSION.D3D11_RTV_DIMENSION_TEXTURE2DARRAY,
+            .Texture2DArray = { .MipSlice = mip, .FirstArraySlice = face, .ArraySize = 1 },
+        };
         rtv: *ID3D11RenderTargetView = null;
         ID3D11Device_CreateRenderTargetView(device, cast(target[0].texture, *ID3D11Resource), rtv_desc&, rtv&);
         ID3D11DeviceContext_OMSetRenderTargets(context, 1, rtv&, null);
@@ -423,17 +428,19 @@ load_hdr: proc(device: *ID3D11Device, path: [*]const char) -> *ID3D11ShaderResou
         printf("Failed to load HDR image: %s\n", path);
         exit(1);
     }
-    desc: D3D11_TEXTURE2D_DESC = {};
-    desc.Width = cast(img.width, UINT);
-    desc.Height = cast(img.height, UINT);
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT;
-    desc.SampleDesc.Count = 1;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    init: D3D11_SUBRESOURCE_DATA = {};
-    init.pSysMem = img.pixels;
-    init.SysMemPitch = cast(img.width * 16, UINT);
+    desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(img.width, UINT),
+        .Height = cast(img.height, UINT),
+        .MipLevels = 1,
+        .ArraySize = 1,
+        .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32A32_FLOAT,
+        .SampleDesc = { .Count = 1 },
+        .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+    };
+    init: D3D11_SUBRESOURCE_DATA = {
+        .pSysMem = img.pixels,
+        .SysMemPitch = cast(img.width * 16, UINT),
+    };
     texture: *ID3D11Texture2D = null;
     srv: *ID3D11ShaderResourceView = null;
     ID3D11Device_CreateTexture2D(device, desc&, init&, texture&);
@@ -457,18 +464,17 @@ main: proc() -> i32 = {
     // ----------------------------------------------------
     SetProcessDPIAware();
     instance: HMODULE = GetModuleHandleA(null);
-    wc: WNDCLASSA = {};
-    wc.lpfnWndProc = window_proc;
-    wc.hInstance = instance;
-    wc.hCursor = LoadCursorA(null, IDC_ARROW);
-    wc.lpszClassName = "LearnD3D11";
+    wc: WNDCLASSA = {
+        .lpfnWndProc = window_proc,
+        .hInstance = instance,
+        .hCursor = LoadCursorA(null, IDC_ARROW),
+        .lpszClassName = "LearnD3D11",
+    };
     RegisterClassA(wc&);
     // A fixed size: the swap chain and every render target keep the size they
     // were created with, so nothing needs rebuilding on resize.
     style: DWORD = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
-    rect: RECT = {};
-    rect.right = scr_width;
-    rect.bottom = scr_height;
+    rect: RECT = { .right = scr_width, .bottom = scr_height };
     AdjustWindowRect(rect&, style, 0);
     window: HWND = CreateWindowExA(0, wc.lpszClassName, "LearnD3D11  (Tab: uniform grid / textured)", style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
                                    rect.right - rect.left, rect.bottom - rect.top, null, null, instance, null);
@@ -479,16 +485,19 @@ main: proc() -> i32 = {
 
     // d3d11: create the device, its immediate context and a swap chain
     // ----------------------------------------------------------------
-    swap_desc: DXGI_SWAP_CHAIN_DESC = {};
-    swap_desc.BufferDesc.Width = cast(scr_width, UINT);
-    swap_desc.BufferDesc.Height = cast(scr_height, UINT);
-    swap_desc.BufferDesc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    swap_desc.SampleDesc.Count = 1;
-    swap_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    swap_desc.BufferCount = 2;
-    swap_desc.OutputWindow = window;
-    swap_desc.Windowed = 1;
-    swap_desc.SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    swap_desc: DXGI_SWAP_CHAIN_DESC = {
+        .BufferDesc = {
+            .Width = cast(scr_width, UINT),
+            .Height = cast(scr_height, UINT),
+            .Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+        },
+        .SampleDesc = { .Count = 1 },
+        .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+        .BufferCount = 2,
+        .OutputWindow = window,
+        .Windowed = 1,
+        .SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD,
+    };
     feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
     swap_chain: *IDXGISwapChain = null;
     device: *ID3D11Device = null;
@@ -502,21 +511,23 @@ main: proc() -> i32 = {
     IDXGISwapChain_GetBuffer(swap_chain, 0, IID_ID3D11Texture2D&, cast(backbuffer&, **void));
     // The back buffer is viewed as sRGB: what the shaders write is linear, and
     // the view gamma-encodes it on the way in (5.2).
-    backbuffer_view: D3D11_RENDER_TARGET_VIEW_DESC = {};
-    backbuffer_view.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    backbuffer_view.ViewDimension = D3D11_RTV_DIMENSION.D3D11_RTV_DIMENSION_TEXTURE2D;
+    backbuffer_view: D3D11_RENDER_TARGET_VIEW_DESC = {
+        .Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+        .ViewDimension = D3D11_RTV_DIMENSION.D3D11_RTV_DIMENSION_TEXTURE2D,
+    };
     backbuffer_rtv: *ID3D11RenderTargetView = null;
     ID3D11Device_CreateRenderTargetView(device, cast(backbuffer, *ID3D11Resource), backbuffer_view&, backbuffer_rtv&);
 
     // A depth buffer the size of the window: 24 bits of depth, 8 of stencil.
-    depth_desc: D3D11_TEXTURE2D_DESC = {};
-    depth_desc.Width = cast(scr_width, UINT);
-    depth_desc.Height = cast(scr_height, UINT);
-    depth_desc.MipLevels = 1;
-    depth_desc.ArraySize = 1;
-    depth_desc.Format = DXGI_FORMAT.DXGI_FORMAT_D24_UNORM_S8_UINT;
-    depth_desc.SampleDesc.Count = 1;
-    depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    depth_desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(scr_width, UINT),
+        .Height = cast(scr_height, UINT),
+        .MipLevels = 1,
+        .ArraySize = 1,
+        .Format = DXGI_FORMAT.DXGI_FORMAT_D24_UNORM_S8_UINT,
+        .SampleDesc = { .Count = 1 },
+        .BindFlags = D3D11_BIND_DEPTH_STENCIL,
+    };
     depth_texture: *ID3D11Texture2D = null;
     depth_dsv: *ID3D11DepthStencilView = null;
     ID3D11Device_CreateTexture2D(device, depth_desc&, null, depth_texture&);
@@ -526,27 +537,30 @@ main: proc() -> i32 = {
     // ----------------------------
     // GL's conventions rather than D3D's: counter-clockwise triangles face the
     // viewer, and nothing is culled.
-    raster_desc: D3D11_RASTERIZER_DESC = {};
-    raster_desc.FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID;
-    raster_desc.CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE;
-    raster_desc.FrontCounterClockwise = 1;
-    raster_desc.DepthClipEnable = 1;
+    raster_desc: D3D11_RASTERIZER_DESC = {
+        .FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID,
+        .CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE,
+        .FrontCounterClockwise = 1,
+        .DepthClipEnable = 1,
+    };
     raster_state: *ID3D11RasterizerState = null;
     ID3D11Device_CreateRasterizerState(device, raster_desc&, raster_state&);
     ID3D11DeviceContext_RSSetState(context, raster_state);
-    viewport: D3D11_VIEWPORT = {};
-    viewport.Width = cast(scr_width, f32);
-    viewport.Height = cast(scr_height, f32);
-    viewport.MaxDepth = 1.0;
+    viewport: D3D11_VIEWPORT = {
+        .Width = cast(scr_width, f32),
+        .Height = cast(scr_height, f32),
+        .MaxDepth = 1.0,
+    };
 
     // A sampler: how textures are filtered and what happens past their edges.
-    sampler_desc: D3D11_SAMPLER_DESC = {};
-    sampler_desc.Filter = D3D11_FILTER.D3D11_FILTER_ANISOTROPIC;
-    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP;
-    sampler_desc.MaxAnisotropy = 8;
-    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+    sampler_desc: D3D11_SAMPLER_DESC = {
+        .Filter = D3D11_FILTER.D3D11_FILTER_ANISOTROPIC,
+        .AddressU = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP,
+        .AddressV = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP,
+        .AddressW = D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP,
+        .MaxAnisotropy = 8,
+        .MaxLOD = D3D11_FLOAT32_MAX,
+    };
     sampler: *ID3D11SamplerState = null;
     ID3D11Device_CreateSamplerState(device, sampler_desc&, sampler&);
     ID3D11DeviceContext_PSSetSamplers(context, 0, 1, sampler&);
@@ -569,10 +583,11 @@ main: proc() -> i32 = {
     clamp_sampler: *ID3D11SamplerState = null;
     ID3D11Device_CreateSamplerState(device, clamp_desc&, clamp_sampler&);
     ID3D11DeviceContext_PSSetSamplers(context, 1, 1, clamp_sampler&);
-    sky_depth_desc: D3D11_DEPTH_STENCIL_DESC = {};
-    sky_depth_desc.DepthEnable = 1;
-    sky_depth_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK.D3D11_DEPTH_WRITE_MASK_ZERO;
-    sky_depth_desc.DepthFunc = D3D11_COMPARISON_FUNC.D3D11_COMPARISON_LESS_EQUAL;
+    sky_depth_desc: D3D11_DEPTH_STENCIL_DESC = {
+        .DepthEnable = 1,
+        .DepthWriteMask = D3D11_DEPTH_WRITE_MASK.D3D11_DEPTH_WRITE_MASK_ZERO,
+        .DepthFunc = D3D11_COMPARISON_FUNC.D3D11_COMPARISON_LESS_EQUAL,
+    };
     sky_depth: *ID3D11DepthStencilState = null;
     ID3D11Device_CreateDepthStencilState(device, sky_depth_desc&, sky_depth&);
 
@@ -618,9 +633,7 @@ main: proc() -> i32 = {
     bind_constants(context, 1, prefilter_buffer);
     bind_texture(context, 0, env_cubemap.srv);
     for (mip: UINT = 0; mip < 5; mip += 1) {
-        settings: prefilter_constants = {};
-        settings.roughness = cast(mip, f32) / 4.0;
-        settings.env_size = 512.0;
+        settings: prefilter_constants = { .roughness = cast(mip, f32) / 4.0, .env_size = 512.0 };
         update_buffer(context, prefilter_buffer, settings&, sizeof(prefilter_constants));
         render_to_cube(device, context, prefilter_map&, mip, transforms_buffer, cube_vb);
     }
@@ -628,14 +641,15 @@ main: proc() -> i32 = {
 
     // pbr: the 2D lookup table of the BRDF, drawn with one full-screen triangle
     // -------------------------------------------------------------------------
-    lut_desc: D3D11_TEXTURE2D_DESC = {};
-    lut_desc.Width = 512;
-    lut_desc.Height = 512;
-    lut_desc.MipLevels = 1;
-    lut_desc.ArraySize = 1;
-    lut_desc.Format = DXGI_FORMAT.DXGI_FORMAT_R16G16_FLOAT;
-    lut_desc.SampleDesc.Count = 1;
-    lut_desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    lut_desc: D3D11_TEXTURE2D_DESC = {
+        .Width = 512,
+        .Height = 512,
+        .MipLevels = 1,
+        .ArraySize = 1,
+        .Format = DXGI_FORMAT.DXGI_FORMAT_R16G16_FLOAT,
+        .SampleDesc = { .Count = 1 },
+        .BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+    };
     lut_texture: *ID3D11Texture2D = null;
     lut_rtv: *ID3D11RenderTargetView = null;
     brdf_lut: *ID3D11ShaderResourceView = null;
@@ -661,12 +675,20 @@ main: proc() -> i32 = {
 
     // lights
     // ------
-    lights: lights_constants = {};
-    lights.positions[0] = v4(-10.0, 10.0, 10.0, 0.0);
-    lights.positions[1] = v4(10.0, 10.0, 10.0, 0.0);
-    lights.positions[2] = v4(-10.0, -10.0, 10.0, 0.0);
-    lights.positions[3] = v4(10.0, -10.0, 10.0, 0.0);
-    for (i: u32 = 0; i < 4; i += 1) { lights.colors[i] = v4(300.0, 300.0, 300.0, 0.0); }
+    lights: lights_constants = {
+        .positions = {
+            v4(-10.0, 10.0, 10.0, 0.0),
+            v4(10.0, 10.0, 10.0, 0.0),
+            v4(-10.0, -10.0, 10.0, 0.0),
+            v4(10.0, -10.0, 10.0, 0.0),
+        },
+        .colors = {
+            v4(300.0, 300.0, 300.0, 0.0),
+            v4(300.0, 300.0, 300.0, 0.0),
+            v4(300.0, 300.0, 300.0, 0.0),
+            v4(300.0, 300.0, 300.0, 0.0),
+        },
+    };
     update_buffer(context, lights_buffer, lights&, sizeof(lights_constants));
     textured: i32 = 0;
     cam = framing(textured);
@@ -705,18 +727,17 @@ main: proc() -> i32 = {
         ID3D11DeviceContext_ClearDepthStencilView(context, depth_dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0, 0);
         ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         bind_constants(context, 0, transforms_buffer);
-        t: transforms = {};
-        t.view = camera_view(cam&);
-        t.projection = m4_perspective(radians(cam.zoom), cast(scr_width, f32) / cast(scr_height, f32), 0.1, 100.0);
-        t.view_position = cam.position;
+        t: transforms = {
+            .view = camera_view(cam&),
+            .projection = m4_perspective(radians(cam.zoom), cast(scr_width, f32) / cast(scr_height, f32), 0.1, 100.0),
+            .view_position = cam.position,
+        };
         shader_use(context, pbr_shader&);
         bind_constants(context, 1, material_buffer);
         bind_constants(context, 2, lights_buffer);
         ibl_views: [3]*ID3D11ShaderResourceView = { irradiance_map.srv, prefilter_map.srv, brdf_lut };
         ID3D11DeviceContext_PSSetShaderResources(context, 5, 3, ibl_views[0]&);
-        m: material_constants = {};
-        m.ao = 1.0;
-        m.textured = textured;
+        m: material_constants = { .ao = 1.0, .textured = textured };
         if (textured != 0) {
             // one sphere per material, in a row
             for (i: u32 = 0; i < 5; i += 1) {

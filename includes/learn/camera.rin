@@ -26,14 +26,15 @@ camera: struct = {
 }
 
 camera_create: proc(position: vec3, yaw: f32, pitch: f32) -> camera = {
-    c: camera = {};
-    c.position = position;
-    c.world_up = v3(0.0, 1.0, 0.0);
-    c.yaw = yaw;
-    c.pitch = pitch;
-    c.speed = 2.5;
-    c.sensitivity = 0.1;
-    c.zoom = 45.0;
+    c: camera = {
+        .position = position,
+        .world_up = v3(0.0, 1.0, 0.0),
+        .yaw = yaw,
+        .pitch = pitch,
+        .speed = 2.5,
+        .sensitivity = 0.1,
+        .zoom = 45.0,
+    };
     camera_update_vectors(c&);
     return c;
 }

@@ -128,16 +128,17 @@ model_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: 
         printf("model: cannot load %s\n", path);
         exit(1);
     }
-    desc: D3D11_TEXTURE2D_DESC = {};
-    desc.Width = cast(img.width, UINT);
-    desc.Height = cast(img.height, UINT);
-    desc.ArraySize = 1;
-    // Colours are drawn as stored, as LearnOpenGL's model loader does; the
-    // normal map is data either way.
-    desc.Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    desc: D3D11_TEXTURE2D_DESC = {
+        .Width = cast(img.width, UINT),
+        .Height = cast(img.height, UINT),
+        .ArraySize = 1,
+        // Colours are drawn as stored, as LearnOpenGL's model loader does; the
+        // normal map is data either way.
+        .Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+        .SampleDesc = { .Count = 1 },
+        .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+        .MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS,
+    };
     texture: *ID3D11Texture2D = null;
     srv: *ID3D11ShaderResourceView = null;
     ID3D11Device_CreateTexture2D(device, desc&, null, texture&);
@@ -152,8 +153,7 @@ obj_load_material: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, di
     path: [260]char = {};
     cstr_copy(path, dir);
     cstr_append(path, name);
-    r: obj_reader = {};
-    r.text = cast(filesystem_read(path[0]&, null), [*]char);
+    r: obj_reader = { .text = cast(filesystem_read(path[0]&, null), [*]char) };
     word: [128]char = {};
     while (r.text[r.at] != 0) {
         obj_skip_spaces(r&);
@@ -183,8 +183,7 @@ model_load: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, relative_
     path: [260]char = {};
     cstr_copy(path, dir);
     cstr_append(path, file);
-    r: obj_reader = {};
-    r.text = cast(filesystem_read(path[0]&, null), [*]char);
+    r: obj_reader = { .text = cast(filesystem_read(path[0]&, null), [*]char) };
     if (r.text == null) {
         printf("model: cannot read %s\n", path[0]&);
         exit(1);
@@ -274,12 +273,12 @@ model_load: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, relative_
         }
         obj_next_line(r&);
     }
-    desc: D3D11_BUFFER_DESC = {};
-    desc.ByteWidth = cast(nv * sizeof(model_vertex), UINT);
-    desc.Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE;
-    desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    init: D3D11_SUBRESOURCE_DATA = {};
-    init.pSysMem = vertices;
+    desc: D3D11_BUFFER_DESC = {
+        .ByteWidth = cast(nv * sizeof(model_vertex), UINT),
+        .Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE,
+        .BindFlags = D3D11_BIND_VERTEX_BUFFER,
+    };
+    init: D3D11_SUBRESOURCE_DATA = { .pSysMem = vertices };
     ID3D11Device_CreateBuffer(device, desc&, init&, result.vertices&);
     result.vertex_count = cast(nv, UINT);
     return result;
