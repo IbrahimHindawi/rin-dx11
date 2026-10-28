@@ -1,13 +1,13 @@
 // How the lessons are built. Read by `rin build`, not executed.
 //
 // Every lesson is its own program, named after its file.
-build_name:      [*]const char = "rin-dx11";
-build_dir:       [*]const char = "build";
-build_generator: [*]const char = "Ninja";
-build_compiler:  [*]const char = "clang-cl";
-build_type:      [*]const char = "Debug";
+build_name:      ^const char = "rin-dx11";
+build_dir:       ^const char = "build";
+build_generator: ^const char = "Ninja";
+build_compiler:  ^const char = "clang-cl";
+build_type:      ^const char = "Debug";
 
-build_entries: [38][*]const char = {
+build_entries: [38]^const char = {
     "src/1.getting_started/1.1.hello_window/hello_window.rin",
     "src/1.getting_started/2.1.hello_triangle/hello_triangle.rin",
     "src/1.getting_started/3.1.shaders/shaders.rin",
@@ -48,8 +48,8 @@ build_entries: [38][*]const char = {
     "src/6.pbr/2.2.ibl_specular/ibl_specular.rin",
 };
 
-build_defines: [1][*]const char = { "_CRT_SECURE_NO_WARNINGS" };
+build_defines: [1]^const char = { "_CRT_SECURE_NO_WARNINGS" };
 
-build_libraries: [7][*]const char = {
+build_libraries: [7]^const char = {
     "user32", "d3d11", "dxgi", "d3dcompiler", "dxguid", "ole32", "windowscodecs",
 };

@@ -255,7 +255,7 @@ m4_without_translation: proc(a: mat4) -> mat4 = {
 // General inverse by cofactors. Used for normal matrices; a singular matrix
 // comes back unchanged.
 m4_inverse: proc(a: mat4) -> mat4 = {
-    m: [*]const f32 = a.m[0]&;
+    m: ^const f32 = a.m[0]&;
     inv: mat4 = {
         .m = {
             [0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10],

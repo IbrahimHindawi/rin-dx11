@@ -24,8 +24,8 @@ import "../math.rin"
 import "../image.rin"
 import "filesystem.rin"
 
-strtof: proc[external](text: [*]const char, end: *[*]char) -> f32 = {}
-strtol: proc[external](text: [*]const char, end: *[*]char, base: i32) -> long = {}
+strtof: proc[external](text: ^const char, end: *^char) -> f32 = {}
+strtol: proc[external](text: ^const char, end: *^char, base: i32) -> long = {}
 
 model_vertex: struct = {
     position: vec3;
@@ -48,30 +48,30 @@ model: struct = {
 }
 
 obj_reader: struct = {
-    text: [*]char;
+    text: ^char;
     at: u64;
 }
 
 obj_skip_spaces: proc(r: *obj_reader) -> void = {
-    while (r[0].text[r[0].at] == ' ' || r[0].text[r[0].at] == '\t') { r[0].at += 1; }
+    while (r*.text[r*.at] == ' ' || r*.text[r*.at] == '\t') { r*.at += 1; }
 }
 
 obj_next_line: proc(r: *obj_reader) -> void = {
-    while (r[0].text[r[0].at] != 0 && r[0].text[r[0].at] != '\n') { r[0].at += 1; }
-    if (r[0].text[r[0].at] == '\n') { r[0].at += 1; }
+    while (r*.text[r*.at] != 0 && r*.text[r*.at] != '\n') { r*.at += 1; }
+    if (r*.text[r*.at] == '\n') { r*.at += 1; }
 }
 
 obj_float: proc(r: *obj_reader) -> f32 = {
-    end: [*]char = null;
-    value: f32 = strtof(r[0].text[r[0].at]&, end&);
-    r[0].at = cast(cast(end, usize) - cast(r[0].text, usize), u64);
+    end: ^char = null;
+    value: f32 = strtof(r*.text[r*.at]&, end&);
+    r*.at = cast(cast(end, usize) - cast(r*.text, usize), u64);
     return value;
 }
 
 obj_int: proc(r: *obj_reader) -> i32 = {
-    end: [*]char = null;
-    value: i32 = cast(strtol(r[0].text[r[0].at]&, end&, 10), i32);
-    r[0].at = cast(cast(end, usize) - cast(r[0].text, usize), u64);
+    end: ^char = null;
+    value: i32 = cast(strtol(r*.text[r*.at]&, end&, 10), i32);
+    r*.at = cast(cast(end, usize) - cast(r*.text, usize), u64);
     return value;
 }
 
@@ -80,18 +80,18 @@ obj_word: proc(r: *obj_reader, out: []char) -> void = {
     obj_skip_spaces(r);
     n: u64 = 0;
     for (; n + 1 < out.length; n += 1) {
-        c: char = r[0].text[r[0].at];
+        c: char = r*.text[r*.at];
         if (c == 0 || c == '\n' || c == '\r' || c == ' ' || c == '\t') { break; }
         out[n] = c;
-        r[0].at += 1;
+        r*.at += 1;
     }
     out[n] = 0;
 }
 
-obj_starts: proc(r: *const obj_reader, word: [*]const char) -> b32 = {
+obj_starts: proc(r: *const obj_reader, word: ^const char) -> b32 = {
     n: u64 = cstr_length(word);
-    return cstr_equals_n(r[0].text[r[0].at]&, word, n) &&
-           (r[0].text[r[0].at + n] == ' ' || r[0].text[r[0].at + n] == '\t');
+    return cstr_equals_n(r*.text[r*.at]&, word, n) &&
+           (r*.text[r*.at + n] == ' ' || r*.text[r*.at + n] == '\t');
 }
 
 // One `a/b/c` corner of a face.
@@ -106,23 +106,23 @@ obj_read_corner: proc(r: *obj_reader) -> obj_corner = {
     c: obj_corner = {};
     obj_skip_spaces(r);
     c.position = obj_int(r);
-    if (r[0].text[r[0].at] != '/') { return c; }
-    r[0].at += 1;
-    if (r[0].text[r[0].at] != '/') { c.uv = obj_int(r); }
-    if (r[0].text[r[0].at] != '/') { return c; }
-    r[0].at += 1;
+    if (r*.text[r*.at] != '/') { return c; }
+    r*.at += 1;
+    if (r*.text[r*.at] != '/') { c.uv = obj_int(r); }
+    if (r*.text[r*.at] != '/') { return c; }
+    r*.at += 1;
     c.normal = obj_int(r);
     return c;
 }
 
 obj_at_corner: proc(r: *obj_reader) -> b32 = {
     obj_skip_spaces(r);
-    c: char = r[0].text[r[0].at];
+    c: char = r*.text[r*.at];
     return (c >= '0' && c <= '9') || c == '-';
 }
 
 // A texture with a full mip chain, from an image file.
-model_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [*]const char) -> *ID3D11ShaderResourceView = {
+model_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: ^const char) -> *ID3D11ShaderResourceView = {
     img: image = image_load(path);
     if (img.pixels == null) {
         printf("model: cannot load %s\n", path);
@@ -149,11 +149,11 @@ model_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: 
 }
 
 // Reads `name` from the .mtl next to the model, and loads its textures.
-obj_load_material: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, dir: [*]const char, name: [*]const char, out: *model) -> void = {
+obj_load_material: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, dir: ^const char, name: ^const char, out: *model) -> void = {
     path: [260]char = {};
     cstr_copy(path, dir);
     cstr_append(path, name);
-    r: obj_reader = { .text = cast(filesystem_read(path[0]&, null), [*]char) };
+    r: obj_reader = { .text = cast(filesystem_read(path[0]&, null), ^char) };
     word: [128]char = {};
     while (r.text[r.at] != 0) {
         obj_skip_spaces(r&);
@@ -166,9 +166,9 @@ obj_load_material: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, di
             cstr_copy(path, dir);
             cstr_append(path, word[0]&);
             t: *ID3D11ShaderResourceView = model_texture(device, context, path[0]&);
-            if (is_diffuse) { out[0].diffuse = t; }
-            if (is_specular) { out[0].specular = t; }
-            if (is_normal) { out[0].normal = t; }
+            if (is_diffuse) { out*.diffuse = t; }
+            if (is_specular) { out*.specular = t; }
+            if (is_normal) { out*.normal = t; }
         }
         obj_next_line(r&);
     }
@@ -177,13 +177,13 @@ obj_load_material: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, di
 model_arena: memops_arena = {};
 
 // `relative_dir` ends in a slash, `file` is the .obj inside it.
-model_load: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, relative_dir: [*]const char, file: [*]const char, flip_v: b32) -> model = {
+model_load: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, relative_dir: ^const char, file: ^const char, flip_v: b32) -> model = {
     if (model_arena.base == null) { memops_arena_initialize(model_arena&); }
-    dir: [*]const char = filesystem_path(relative_dir);
+    dir: ^const char = filesystem_path(relative_dir);
     path: [260]char = {};
     cstr_copy(path, dir);
     cstr_append(path, file);
-    r: obj_reader = { .text = cast(filesystem_read(path[0]&, null), [*]char) };
+    r: obj_reader = { .text = cast(filesystem_read(path[0]&, null), ^char) };
     if (r.text == null) {
         printf("model: cannot read %s\n", path[0]&);
         exit(1);
@@ -210,10 +210,10 @@ model_load: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, relative_
         obj_next_line(r&);
     }
 
-    p: [*]vec3 = cast(memops_arena_push(model_arena&, (positions + 1) * sizeof(vec3), 16), [*]vec3);
-    t: [*]vec2 = cast(memops_arena_push(model_arena&, (uvs + 1) * sizeof(vec2), 16), [*]vec2);
-    n: [*]vec3 = cast(memops_arena_push(model_arena&, (normals + 1) * sizeof(vec3), 16), [*]vec3);
-    vertices: [*]model_vertex = cast(memops_arena_push(model_arena&, corners * sizeof(model_vertex), 16), [*]model_vertex);
+    p: ^vec3 = cast(memops_arena_push(model_arena&, (positions + 1) * sizeof(vec3), 16), ^vec3);
+    t: ^vec2 = cast(memops_arena_push(model_arena&, (uvs + 1) * sizeof(vec2), 16), ^vec2);
+    n: ^vec3 = cast(memops_arena_push(model_arena&, (normals + 1) * sizeof(vec3), 16), ^vec3);
+    vertices: ^model_vertex = cast(memops_arena_push(model_arena&, corners * sizeof(model_vertex), 16), ^model_vertex);
     // Index 0 is the "missing" entry, so 1-based indices need no adjusting.
     p[0] = v3(0.0, 0.0, 0.0);
     t[0] = v2(0.0, 0.0);
@@ -287,11 +287,11 @@ model_load: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, relative_
 model_draw_instanced: proc(context: *ID3D11DeviceContext, m: *const model, instances: UINT) -> void = {
     stride: UINT = sizeof(model_vertex);
     offset: UINT = 0;
-    views: [3]*ID3D11ShaderResourceView = { m[0].diffuse, m[0].specular, m[0].normal };
+    views: [3]*ID3D11ShaderResourceView = { m*.diffuse, m*.specular, m*.normal };
     ID3D11DeviceContext_PSSetShaderResources(context, 0, 3, views[0]&);
     ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, m[0].vertices&, stride&, offset&);
-    ID3D11DeviceContext_DrawInstanced(context, m[0].vertex_count, instances, 0, 0);
+    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, m*.vertices&, stride&, offset&);
+    ID3D11DeviceContext_DrawInstanced(context, m*.vertex_count, instances, 0, 0);
 }
 
 model_draw: proc(context: *ID3D11DeviceContext, m: *const model) -> void = {

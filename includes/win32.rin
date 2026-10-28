@@ -78,19 +78,19 @@ WNDCLASSA: struct[external, no_layout_check] = {
     lpfnWndProc: *proc[callconv(CALLBACK)](hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT;
     hInstance: HINSTANCE;
     hCursor: HCURSOR;
-    lpszClassName: [*]const char;
+    lpszClassName: ^const char;
 }
 
-GetModuleHandleA: proc[external](name: [*]const char) -> HMODULE = {}
-GetModuleFileNameA: proc[external](module: HMODULE, out: [*]char, size: DWORD) -> DWORD = {}
-GetFileAttributesA: proc[external](path: [*]const char) -> DWORD = {}
-LoadCursorA: proc[external](instance: HINSTANCE, name: [*]const char) -> HCURSOR = {}
+GetModuleHandleA: proc[external](name: ^const char) -> HMODULE = {}
+GetModuleFileNameA: proc[external](module: HMODULE, out: ^char, size: DWORD) -> DWORD = {}
+GetFileAttributesA: proc[external](path: ^const char) -> DWORD = {}
+LoadCursorA: proc[external](instance: HINSTANCE, name: ^const char) -> HCURSOR = {}
 RegisterClassA: proc[external](window_class: *const WNDCLASSA) -> ATOM = {}
 AdjustWindowRect: proc[external](rect: *RECT, style: DWORD, menu: BOOL) -> BOOL = {}
-CreateWindowExA: proc[external](ex_style: DWORD, class_name: [*]const char, title: [*]const char, style: DWORD, x: i32, y: i32, w: i32, h: i32, parent: HWND, menu: HMENU, instance: HINSTANCE, param: *void) -> HWND = {}
+CreateWindowExA: proc[external](ex_style: DWORD, class_name: ^const char, title: ^const char, style: DWORD, x: i32, y: i32, w: i32, h: i32, parent: HWND, menu: HMENU, instance: HINSTANCE, param: *void) -> HWND = {}
 DestroyWindow: proc[external](hwnd: HWND) -> BOOL = {}
 ShowWindow: proc[external](hwnd: HWND, cmd: i32) -> BOOL = {}
-SetWindowTextA: proc[external](hwnd: HWND, text: [*]const char) -> BOOL = {}
+SetWindowTextA: proc[external](hwnd: HWND, text: ^const char) -> BOOL = {}
 PeekMessageA: proc[external](msg: *MSG, hwnd: HWND, min: UINT, max: UINT, remove: UINT) -> BOOL = {}
 TranslateMessage: proc[external](msg: *const MSG) -> BOOL = {}
 DispatchMessageA: proc[external](msg: *const MSG) -> LRESULT = {}
@@ -102,7 +102,7 @@ GetCursorPos: proc[external](point: *POINT) -> BOOL = {}
 SetProcessDPIAware: proc[external]() -> BOOL = {}
 QueryPerformanceFrequency: proc[external](out: *LARGE_INTEGER) -> BOOL = {}
 QueryPerformanceCounter: proc[external](out: *LARGE_INTEGER) -> BOOL = {}
-MultiByteToWideChar: proc[external](code_page: UINT, flags: DWORD, text: [*]const char, length: i32, out: [*]WCHAR, out_length: i32) -> i32 = {}
+MultiByteToWideChar: proc[external](code_page: UINT, flags: DWORD, text: ^const char, length: i32, out: ^WCHAR, out_length: i32) -> i32 = {}
 CoInitializeEx: proc[external](reserved: *void, flags: DWORD) -> HRESULT = {}
 CoCreateInstance: proc[external](clsid: *const CLSID, outer: *void, context: DWORD, iid: *const IID, out: **void) -> HRESULT = {}
 
@@ -113,7 +113,7 @@ WS_VISIBLE: const DWORD;
 CW_USEDEFAULT: const i32;
 SW_SHOW: const i32;
 PM_REMOVE: const UINT;
-IDC_ARROW: const [*]const char;
+IDC_ARROW: const ^const char;
 INVALID_FILE_ATTRIBUTES: const DWORD;
 FILE_ATTRIBUTE_DIRECTORY: const DWORD;
 CP_UTF8: const UINT;
@@ -442,7 +442,7 @@ D3D11_DEPTH_STENCIL_VIEW_DESC: struct[external, no_layout_check] = {
 }
 
 D3D11_INPUT_ELEMENT_DESC: struct[external, no_layout_check] = {
-    SemanticName: [*]const char;
+    SemanticName: ^const char;
     SemanticIndex: UINT;
     Format: DXGI_FORMAT;
     InputSlot: UINT;
@@ -527,7 +527,7 @@ D3D11_BOX: struct[external, no_layout_check] = {
 //    call through the vtable. ---------------------------------------------------
 
 D3D11CreateDeviceAndSwapChain: proc[external](adapter: *void, driver: D3D_DRIVER_TYPE, software: HMODULE, flags: UINT, levels: *const D3D_FEATURE_LEVEL, level_count: UINT, sdk: UINT, desc: *const DXGI_SWAP_CHAIN_DESC, swap_chain: **IDXGISwapChain, device: **ID3D11Device, level: *D3D_FEATURE_LEVEL, context: **ID3D11DeviceContext) -> HRESULT = {}
-D3DCompile: proc[external](source: *const void, size: usize, name: [*]const char, defines: *const D3D_SHADER_MACRO, include: *ID3DInclude, entry: [*]const char, target: [*]const char, flags1: UINT, flags2: UINT, code: **ID3DBlob, errors: **ID3DBlob) -> HRESULT = {}
+D3DCompile: proc[external](source: *const void, size: usize, name: ^const char, defines: *const D3D_SHADER_MACRO, include: *ID3DInclude, entry: ^const char, target: ^const char, flags1: UINT, flags2: UINT, code: **ID3DBlob, errors: **ID3DBlob) -> HRESULT = {}
 
 IDXGISwapChain_GetBuffer: proc[external](This: *IDXGISwapChain, index: UINT, iid: *const IID, out: **void) -> HRESULT = {}
 IDXGISwapChain_Present: proc[external](This: *IDXGISwapChain, interval: UINT, flags: UINT) -> HRESULT = {}
@@ -546,7 +546,7 @@ ID3D11Device_CreateSamplerState: proc[external](This: *ID3D11Device, desc: *cons
 ID3D11Device_CreateRasterizerState: proc[external](This: *ID3D11Device, desc: *const D3D11_RASTERIZER_DESC, out: **ID3D11RasterizerState) -> HRESULT = {}
 ID3D11Device_CreateDepthStencilState: proc[external](This: *ID3D11Device, desc: *const D3D11_DEPTH_STENCIL_DESC, out: **ID3D11DepthStencilState) -> HRESULT = {}
 ID3D11Device_CreateBlendState: proc[external](This: *ID3D11Device, desc: *const D3D11_BLEND_DESC, out: **ID3D11BlendState) -> HRESULT = {}
-ID3D11Device_CreateInputLayout: proc[external](This: *ID3D11Device, elements: [*]const D3D11_INPUT_ELEMENT_DESC, count: UINT, code: *const void, size: usize, out: **ID3D11InputLayout) -> HRESULT = {}
+ID3D11Device_CreateInputLayout: proc[external](This: *ID3D11Device, elements: ^const D3D11_INPUT_ELEMENT_DESC, count: UINT, code: *const void, size: usize, out: **ID3D11InputLayout) -> HRESULT = {}
 ID3D11Device_CreateVertexShader: proc[external](This: *ID3D11Device, code: *const void, size: usize, linkage: *ID3D11ClassLinkage, out: **ID3D11VertexShader) -> HRESULT = {}
 ID3D11Device_CreateGeometryShader: proc[external](This: *ID3D11Device, code: *const void, size: usize, linkage: *ID3D11ClassLinkage, out: **ID3D11GeometryShader) -> HRESULT = {}
 ID3D11Device_CreatePixelShader: proc[external](This: *ID3D11Device, code: *const void, size: usize, linkage: *ID3D11ClassLinkage, out: **ID3D11PixelShader) -> HRESULT = {}
@@ -622,7 +622,7 @@ WICBitmapEncoderCacheOption: enum[external] = {
     WICBitmapEncoderNoCache = 2,
 }
 
-IWICImagingFactory_CreateDecoderFromFilename: proc[external](This: *IWICImagingFactory, path: [*]const WCHAR, vendor: *const GUID, access: DWORD, options: WICDecodeOptions, out: **IWICBitmapDecoder) -> HRESULT = {}
+IWICImagingFactory_CreateDecoderFromFilename: proc[external](This: *IWICImagingFactory, path: ^const WCHAR, vendor: *const GUID, access: DWORD, options: WICDecodeOptions, out: **IWICBitmapDecoder) -> HRESULT = {}
 IWICImagingFactory_CreateFormatConverter: proc[external](This: *IWICImagingFactory, out: **IWICFormatConverter) -> HRESULT = {}
 IWICImagingFactory_CreateStream: proc[external](This: *IWICImagingFactory, out: **IWICStream) -> HRESULT = {}
 IWICImagingFactory_CreateEncoder: proc[external](This: *IWICImagingFactory, container: *const GUID, vendor: *const GUID, out: **IWICBitmapEncoder) -> HRESULT = {}
@@ -631,9 +631,9 @@ IWICBitmapDecoder_Release: proc[external](This: *IWICBitmapDecoder) -> ULONG = {
 IWICBitmapFrameDecode_Release: proc[external](This: *IWICBitmapFrameDecode) -> ULONG = {}
 IWICFormatConverter_Initialize: proc[external](This: *IWICFormatConverter, source: *IWICBitmapSource, format: *const GUID, dither: WICBitmapDitherType, palette: *IWICPalette, alpha_threshold: f64, palette_type: WICBitmapPaletteType) -> HRESULT = {}
 IWICFormatConverter_GetSize: proc[external](This: *IWICFormatConverter, w: *UINT, h: *UINT) -> HRESULT = {}
-IWICFormatConverter_CopyPixels: proc[external](This: *IWICFormatConverter, rect: *const WICRect, stride: UINT, size: UINT, out: [*]BYTE) -> HRESULT = {}
+IWICFormatConverter_CopyPixels: proc[external](This: *IWICFormatConverter, rect: *const WICRect, stride: UINT, size: UINT, out: ^BYTE) -> HRESULT = {}
 IWICFormatConverter_Release: proc[external](This: *IWICFormatConverter) -> ULONG = {}
-IWICStream_InitializeFromFilename: proc[external](This: *IWICStream, path: [*]const WCHAR, access: DWORD) -> HRESULT = {}
+IWICStream_InitializeFromFilename: proc[external](This: *IWICStream, path: ^const WCHAR, access: DWORD) -> HRESULT = {}
 IWICStream_Release: proc[external](This: *IWICStream) -> ULONG = {}
 IWICBitmapEncoder_Initialize: proc[external](This: *IWICBitmapEncoder, stream: *IStream, cache: WICBitmapEncoderCacheOption) -> HRESULT = {}
 IWICBitmapEncoder_CreateNewFrame: proc[external](This: *IWICBitmapEncoder, out: **IWICBitmapFrameEncode, options: **IPropertyBag2) -> HRESULT = {}
@@ -642,6 +642,6 @@ IWICBitmapEncoder_Release: proc[external](This: *IWICBitmapEncoder) -> ULONG = {
 IWICBitmapFrameEncode_Initialize: proc[external](This: *IWICBitmapFrameEncode, options: *IPropertyBag2) -> HRESULT = {}
 IWICBitmapFrameEncode_SetSize: proc[external](This: *IWICBitmapFrameEncode, w: UINT, h: UINT) -> HRESULT = {}
 IWICBitmapFrameEncode_SetPixelFormat: proc[external](This: *IWICBitmapFrameEncode, format: *GUID) -> HRESULT = {}
-IWICBitmapFrameEncode_WritePixels: proc[external](This: *IWICBitmapFrameEncode, rows: UINT, stride: UINT, size: UINT, pixels: [*]BYTE) -> HRESULT = {}
+IWICBitmapFrameEncode_WritePixels: proc[external](This: *IWICBitmapFrameEncode, rows: UINT, stride: UINT, size: UINT, pixels: ^BYTE) -> HRESULT = {}
 IWICBitmapFrameEncode_Commit: proc[external](This: *IWICBitmapFrameEncode) -> HRESULT = {}
 IWICBitmapFrameEncode_Release: proc[external](This: *IWICBitmapFrameEncode) -> ULONG = {}

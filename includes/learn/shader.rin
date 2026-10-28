@@ -17,22 +17,22 @@ shader: struct = {
     layout: *ID3D11InputLayout;  // null for shaders that make their own vertices
 }
 
-shader_compile: proc(path: [*]const char, source: [*]const u8, size: u64, entry: [*]const char, target: [*]const char) -> *ID3DBlob = {
+shader_compile: proc(path: ^const char, source: ^const u8, size: u64, entry: ^const char, target: ^const char) -> *ID3DBlob = {
     code: *ID3DBlob = null;
     errors: *ID3DBlob = null;
     hr: HRESULT = D3DCompile(source, size, path, null, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target,
                              D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_DEBUG, 0, code&, errors&);
     if (hr < 0) {
-        printf("shader: %s\n", errors != null ? cast(ID3D10Blob_GetBufferPointer(errors), [*]const char) : path);
+        printf("shader: %s\n", errors != null ? cast(ID3D10Blob_GetBufferPointer(errors), ^const char) : path);
         exit(1);
     }
     if (errors != null) { ID3D10Blob_Release(errors); }
     return code;
 }
 
-shader_create: proc(device: *ID3D11Device, path: [*]const char, layout: []const D3D11_INPUT_ELEMENT_DESC) -> shader = {
+shader_create: proc(device: *ID3D11Device, path: ^const char, layout: []const D3D11_INPUT_ELEMENT_DESC) -> shader = {
     size: u64 = 0;
-    source: [*]u8 = filesystem_read(path, size&);
+    source: ^u8 = filesystem_read(path, size&);
     if (source == null) {
         printf("shader: cannot read %s\n", path);
         exit(1);
@@ -50,7 +50,7 @@ shader_create: proc(device: *ID3D11Device, path: [*]const char, layout: []const 
     }
     ID3D10Blob_Release(vs);
 
-    if (cstr_find(cast(source, [*]const char), "gs_main") >= 0) {
+    if (cstr_find(cast(source, ^const char), "gs_main") >= 0) {
         gs: *ID3DBlob = shader_compile(path, source, size, "gs_main", "gs_5_0");
         ID3D11Device_CreateGeometryShader(device, ID3D10Blob_GetBufferPointer(gs), ID3D10Blob_GetBufferSize(gs), null, result.gs&);
         ID3D10Blob_Release(gs);
@@ -63,8 +63,8 @@ shader_create: proc(device: *ID3D11Device, path: [*]const char, layout: []const 
 }
 
 shader_use: proc(context: *ID3D11DeviceContext, s: *const shader) -> void = {
-    ID3D11DeviceContext_IASetInputLayout(context, s[0].layout);
-    ID3D11DeviceContext_VSSetShader(context, s[0].vs, null, 0);
-    ID3D11DeviceContext_GSSetShader(context, s[0].gs, null, 0);
-    ID3D11DeviceContext_PSSetShader(context, s[0].ps, null, 0);
+    ID3D11DeviceContext_IASetInputLayout(context, s*.layout);
+    ID3D11DeviceContext_VSSetShader(context, s*.vs, null, 0);
+    ID3D11DeviceContext_GSSetShader(context, s*.gs, null, 0);
+    ID3D11DeviceContext_PSSetShader(context, s*.ps, null, 0);
 }

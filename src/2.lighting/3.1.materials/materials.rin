@@ -104,8 +104,8 @@ transforms: struct = {
 
 // Draws the 36 vertices of the bound cube with `model`.
 draw_cube: proc(context: *ID3D11DeviceContext, buffer: *ID3D11Buffer, t: *transforms, model: mat4) -> void = {
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, buffer, t, sizeof(transforms));
     ID3D11DeviceContext_Draw(context, 36, 0);
 }

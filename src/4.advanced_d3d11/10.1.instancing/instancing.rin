@@ -291,7 +291,7 @@ main: proc() -> i32 = {
     arena: memops_arena = {};
     memops_arena_initialize(arena&);
     srand(7);
-    matrices: [*]mat4 = cast(memops_arena_push(arena&, cast(amount, u64) * sizeof(mat4), 16), [*]mat4);
+    matrices: ^mat4 = cast(memops_arena_push(arena&, cast(amount, u64) * sizeof(mat4), 16), ^mat4);
     for (i: u32 = 0; i < amount; i += 1) {
         angle: f32 = cast(i, f32) / cast(amount, f32) * 2.0 * pi;
         radius: f32 = 45.0;

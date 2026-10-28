@@ -259,9 +259,9 @@ main: proc() -> i32 = {
     arena: memops_arena = {};
     memops_arena_initialize(arena&);
     points: u64 = cast(grid * grid, u64);
-    positions: [*]vec3 = cast(memops_arena_push(arena&, points * sizeof(vec3), 16), [*]vec3);
-    colors: [*]vec3 = cast(memops_arena_push(arena&, points * sizeof(vec3), 16), [*]vec3);
-    indices: [*]u32 = cast(memops_arena_push(arena&, cast((grid - 1) * (grid - 1) * 6, u64) * 4, 16), [*]u32);
+    positions: ^vec3 = cast(memops_arena_push(arena&, points * sizeof(vec3), 16), ^vec3);
+    colors: ^vec3 = cast(memops_arena_push(arena&, points * sizeof(vec3), 16), ^vec3);
+    indices: ^u32 = cast(memops_arena_push(arena&, cast((grid - 1) * (grid - 1) * 6, u64) * 4, 16), ^u32);
     index_count: u64 = 0;
     for (z: u32 = 0; z < grid; z += 1) {
         for (x: u32 = 0; x < grid; x += 1) {

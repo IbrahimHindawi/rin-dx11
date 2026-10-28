@@ -228,7 +228,7 @@ bind_constants: proc(context: *ID3D11DeviceContext, slot: UINT, buffer: *ID3D11B
 // --------------------------------------------------------------------------
 // `srgb`: the file stores colours, gamma encoded, and sampling should decode
 // them to linear. Data such as normals or roughness is linear already.
-load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: [*]const char, srgb: b32) -> *ID3D11ShaderResourceView = {
+load_texture: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, path: ^const char, srgb: b32) -> *ID3D11ShaderResourceView = {
     img: image = image_load(path);
     if (img.pixels == null) {
         printf("Texture failed to load at path: %s\n", path);
@@ -264,8 +264,8 @@ draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: 
     stride: UINT = 32;
     offset: UINT = 0;
     ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, constants, t, sizeof(transforms));
     ID3D11DeviceContext_Draw(context, count, 0);
 }
@@ -330,7 +330,7 @@ create_shadow_sampler: proc(device: *ID3D11Device) -> *ID3D11SamplerState = {
 
 // The view-projection of each cube face from `center`, in the order of the
 // cubemap's slices: +x, -x, +y, -y, +z, -z.
-cube_face_matrices: proc(center: vec3, z_near: f32, z_far: f32, out: [*]mat4) -> void = {
+cube_face_matrices: proc(center: vec3, z_near: f32, z_far: f32, out: ^mat4) -> void = {
     targets: [6]vec3 = { v3(1.0, 0.0, 0.0), v3(-1.0, 0.0, 0.0), v3(0.0, 1.0, 0.0), v3(0.0, -1.0, 0.0), v3(0.0, 0.0, 1.0), v3(0.0, 0.0, -1.0) };
     ups: [6]vec3 = { v3(0.0, -1.0, 0.0), v3(0.0, -1.0, 0.0), v3(0.0, 0.0, 1.0), v3(0.0, 0.0, -1.0), v3(0.0, -1.0, 0.0), v3(0.0, -1.0, 0.0) };
     projection: mat4 = m4_mul(m4_scale(v3(1.0, -1.0, 1.0)), m4_perspective(radians(90.0), 1.0, z_near, z_far));

@@ -244,8 +244,8 @@ draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: 
     stride: UINT = 32;
     offset: UINT = 0;
     ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, constants, t, sizeof(transforms));
     ID3D11DeviceContext_Draw(context, count, 0);
 }

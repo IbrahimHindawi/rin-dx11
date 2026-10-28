@@ -15,13 +15,13 @@ import "std/print.rin"
 ldexpf: proc[external](x: f32, exponent: i32) -> f32 = {}
 
 image: struct = {
-    pixels: [*]u8;       // RGBA8, width * height * 4 bytes
+    pixels: ^u8;       // RGBA8, width * height * 4 bytes
     width: i32;
     height: i32;
 }
 
 image_hdr: struct = {
-    pixels: [*]vec4;     // linear RGB, a = 1
+    pixels: ^vec4;     // linear RGB, a = 1
     width: i32;
     height: i32;
 }
@@ -37,7 +37,7 @@ image_init: proc() -> void = {
 }
 
 // Null pixels when the file cannot be read or decoded.
-image_load: proc(path: [*]const char) -> image = {
+image_load: proc(path: ^const char) -> image = {
     image_init();
     result: image = {};
     wide: [520]WCHAR = {};
@@ -58,7 +58,7 @@ image_load: proc(path: [*]const char) -> image = {
     h: UINT = 0;
     IWICFormatConverter_GetSize(converter, w&, h&);
     size: u64 = cast(w, u64) * cast(h, u64) * 4;
-    result.pixels = cast(memops_arena_push(image_arena&, size, 16), [*]u8);
+    result.pixels = cast(memops_arena_push(image_arena&, size, 16), ^u8);
     IWICFormatConverter_CopyPixels(converter, null, w * 4, cast(size, UINT), result.pixels);
     IWICFormatConverter_Release(converter);
     IWICBitmapFrameDecode_Release(frame);
@@ -68,11 +68,11 @@ image_load: proc(path: [*]const char) -> image = {
     return result;
 }
 
-image_number: proc(text: [*]const u8, at: *u64) -> i32 = {
+image_number: proc(text: ^const u8, at: *u64) -> i32 = {
     value: i32 = 0;
-    while (text[at[0]] >= '0' && text[at[0]] <= '9') {
-        value = value * 10 + cast(text[at[0]] - '0', i32);
-        at[0] += 1;
+    while (text[at*] >= '0' && text[at*] <= '9') {
+        value = value * 10 + cast(text[at*] - '0', i32);
+        at* += 1;
     }
     return value;
 }
@@ -82,7 +82,7 @@ image_number: proc(text: [*]const u8, at: *u64) -> i32 = {
 // ("-Y height +X width", rows from the top). Each row is run-length encoded
 // one channel at a time: a count above 128 repeats the next byte
 // (count - 128) times, any other count is followed by that many bytes.
-image_load_hdr: proc(path: [*]const char) -> image_hdr = {
+image_load_hdr: proc(path: ^const char) -> image_hdr = {
     image_init();
     result: image_hdr = {};
     file: *FILE = fopen(path, "rb");
@@ -90,10 +90,10 @@ image_load_hdr: proc(path: [*]const char) -> image_hdr = {
     fseek(file, 0, 2);
     size: u64 = cast(ftell(file), u64);
     fseek(file, 0, 0);
-    data: [*]u8 = cast(memops_arena_push(image_arena&, size + 1, 16), [*]u8);
+    data: ^u8 = cast(memops_arena_push(image_arena&, size + 1, 16), ^u8);
     fread(data, 1, size, file);
     fclose(file);
-    if (!cstr_starts_with(cast(data, [*]const char), "#?")) { return result; }
+    if (!cstr_starts_with(cast(data, ^const char), "#?")) { return result; }
 
     at: u64 = 0;
     while (at + 1 < size && !(data[at] == '\n' && data[at + 1] == '\n')) { at += 1; }
@@ -104,8 +104,8 @@ image_load_hdr: proc(path: [*]const char) -> image_hdr = {
     at += 1;
 
     w: u64 = cast(result.width, u64);
-    result.pixels = cast(memops_arena_push(image_arena&, w * cast(result.height, u64) * sizeof(vec4), 16), [*]vec4);
-    row: [*]u8 = cast(memops_arena_push(image_arena&, w * 4, 16), [*]u8);
+    result.pixels = cast(memops_arena_push(image_arena&, w * cast(result.height, u64) * sizeof(vec4), 16), ^vec4);
+    row: ^u8 = cast(memops_arena_push(image_arena&, w * 4, 16), ^u8);
     for (y: u64 = 0; y < cast(result.height, u64); y += 1) {
         at += 4;   // 2, 2, then the width again
         for (channel: u64 = 0; channel < 4; channel += 1) {

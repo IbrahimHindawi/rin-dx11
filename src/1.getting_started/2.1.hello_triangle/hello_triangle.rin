@@ -84,11 +84,11 @@ process_input: proc(window: HWND) -> void = {
     if (key_down(VK_ESCAPE)) { DestroyWindow(window); }
 }
 
-compile_shader: proc(path: [*]const char, source: [*]u8, size: u64, entry: [*]const char, target: [*]const char) -> *ID3DBlob = {
+compile_shader: proc(path: ^const char, source: ^u8, size: u64, entry: ^const char, target: ^const char) -> *ID3DBlob = {
     code: *ID3DBlob = null;
     errors: *ID3DBlob = null;
     if (D3DCompile(source, size, path, null, null, entry, target, 0, 0, code&, errors&) < 0) {
-        printf("ERROR::SHADER::COMPILATION_FAILED\n%s\n", cast(ID3D10Blob_GetBufferPointer(errors), [*]const char));
+        printf("ERROR::SHADER::COMPILATION_FAILED\n%s\n", cast(ID3D10Blob_GetBufferPointer(errors), ^const char));
         exit(1);
     }
     return code;
@@ -181,9 +181,9 @@ main: proc() -> i32 = {
 
     // build and compile our shader program
     // ------------------------------------
-    path: [*]const char = filesystem_path("src/1.getting_started/2.1.hello_triangle/hello_triangle.hlsl");
+    path: ^const char = filesystem_path("src/1.getting_started/2.1.hello_triangle/hello_triangle.hlsl");
     size: u64 = 0;
-    source: [*]u8 = filesystem_read(path, size&);
+    source: ^u8 = filesystem_read(path, size&);
     vs_code: *ID3DBlob = compile_shader(path, source, size, "vs_main", "vs_5_0");
     ps_code: *ID3DBlob = compile_shader(path, source, size, "ps_main", "ps_5_0");
     vertex_shader: *ID3D11VertexShader = null;

@@ -40,36 +40,36 @@ camera_create: proc(position: vec3, yaw: f32, pitch: f32) -> camera = {
 }
 
 camera_view: proc(c: *const camera) -> mat4 = {
-    return m4_look_at(c[0].position, v3_add(c[0].position, c[0].front), c[0].up);
+    return m4_look_at(c*.position, v3_add(c*.position, c*.front), c*.up);
 }
 
 camera_process_keyboard: proc(c: *camera, direction: camera_movement, dt: f32) -> void = {
-    step: f32 = c[0].speed * dt;
+    step: f32 = c*.speed * dt;
     switch (direction) {
-        case camera_movement.forward: { c[0].position = v3_add(c[0].position, v3_scale(c[0].front, step)); }
-        case camera_movement.backward: { c[0].position = v3_sub(c[0].position, v3_scale(c[0].front, step)); }
-        case camera_movement.left: { c[0].position = v3_sub(c[0].position, v3_scale(c[0].right, step)); }
-        case camera_movement.right: { c[0].position = v3_add(c[0].position, v3_scale(c[0].right, step)); }
-        case camera_movement.up: { c[0].position = v3_add(c[0].position, v3_scale(c[0].world_up, step)); }
-        case camera_movement.down: { c[0].position = v3_sub(c[0].position, v3_scale(c[0].world_up, step)); }
+        case camera_movement.forward: { c*.position = v3_add(c*.position, v3_scale(c*.front, step)); }
+        case camera_movement.backward: { c*.position = v3_sub(c*.position, v3_scale(c*.front, step)); }
+        case camera_movement.left: { c*.position = v3_sub(c*.position, v3_scale(c*.right, step)); }
+        case camera_movement.right: { c*.position = v3_add(c*.position, v3_scale(c*.right, step)); }
+        case camera_movement.up: { c*.position = v3_add(c*.position, v3_scale(c*.world_up, step)); }
+        case camera_movement.down: { c*.position = v3_sub(c*.position, v3_scale(c*.world_up, step)); }
     }
 }
 
 // Pitch stops short of straight up and down, where the view would flip.
 camera_process_mouse: proc(c: *camera, dx: f32, dy: f32) -> void = {
-    c[0].yaw += dx * c[0].sensitivity;
-    c[0].pitch = clampf(c[0].pitch + dy * c[0].sensitivity, -89.0, 89.0);
+    c*.yaw += dx * c*.sensitivity;
+    c*.pitch = clampf(c*.pitch + dy * c*.sensitivity, -89.0, 89.0);
     camera_update_vectors(c);
 }
 
 camera_process_scroll: proc(c: *camera, notches: f32) -> void = {
-    c[0].zoom = clampf(c[0].zoom - notches * 2.0, 1.0, 45.0);
+    c*.zoom = clampf(c*.zoom - notches * 2.0, 1.0, 45.0);
 }
 
 camera_update_vectors: proc(c: *camera) -> void = {
-    yaw: f32 = radians(c[0].yaw);
-    pitch: f32 = radians(c[0].pitch);
-    c[0].front = v3_normalize(v3(cosf(yaw) * cosf(pitch), sinf(pitch), sinf(yaw) * cosf(pitch)));
-    c[0].right = v3_normalize(v3_cross(c[0].front, c[0].world_up));
-    c[0].up = v3_normalize(v3_cross(c[0].right, c[0].front));
+    yaw: f32 = radians(c*.yaw);
+    pitch: f32 = radians(c*.pitch);
+    c*.front = v3_normalize(v3(cosf(yaw) * cosf(pitch), sinf(pitch), sinf(yaw) * cosf(pitch)));
+    c*.right = v3_normalize(v3_cross(c*.front, c*.world_up));
+    c*.up = v3_normalize(v3_cross(c*.right, c*.front));
 }

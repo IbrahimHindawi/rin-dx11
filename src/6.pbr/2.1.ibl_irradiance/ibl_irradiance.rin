@@ -232,8 +232,8 @@ draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: 
     stride: UINT = 32;
     offset: UINT = 0;
     ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, constants, t, sizeof(transforms));
     ID3D11DeviceContext_Draw(context, count, 0);
 }
@@ -256,8 +256,8 @@ sphere: struct = {
 
 create_sphere: proc(device: *ID3D11Device, arena: *memops_arena, segments: u32) -> sphere = {
     ring: u32 = segments + 1;
-    vertices: [*]f32 = cast(memops_arena_push(arena, cast(ring * ring * 8, u64) * 4, 16), [*]f32);
-    indices: [*]u32 = cast(memops_arena_push(arena, cast(segments * segments * 6, u64) * 4, 16), [*]u32);
+    vertices: ^f32 = cast(memops_arena_push(arena, cast(ring * ring * 8, u64) * 4, 16), ^f32);
+    indices: ^u32 = cast(memops_arena_push(arena, cast(segments * segments * 6, u64) * 4, 16), ^u32);
     for (y: u32 = 0; y <= segments; y += 1) {
         for (x: u32 = 0; x <= segments; x += 1) {
             u: f32 = cast(x, f32) / cast(segments, f32);
@@ -290,12 +290,12 @@ create_sphere: proc(device: *ID3D11Device, arena: *memops_arena, segments: u32) 
 draw_sphere: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: *transforms, s: *const sphere, model: mat4) -> void = {
     stride: UINT = 32;
     offset: UINT = 0;
-    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, s[0].vertices&, stride&, offset&);
-    ID3D11DeviceContext_IASetIndexBuffer(context, s[0].indices, DXGI_FORMAT.DXGI_FORMAT_R32_UINT, 0);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, s*.vertices&, stride&, offset&);
+    ID3D11DeviceContext_IASetIndexBuffer(context, s*.indices, DXGI_FORMAT.DXGI_FORMAT_R32_UINT, 0);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, constants, t, sizeof(transforms));
-    ID3D11DeviceContext_DrawIndexed(context, s[0].index_count, 0, 0);
+    ID3D11DeviceContext_DrawIndexed(context, s*.index_count, 0, 0);
 }
 
 // A cubemap that can be drawn into face by face (and mip by mip), then read.
@@ -341,7 +341,7 @@ render_to_cube: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, targe
     t: transforms = {
         .projection = m4_mul(m4_scale(v3(1.0, -1.0, 1.0)), m4_perspective(radians(90.0), 1.0, 0.1, 10.0)),
     };
-    size: i32 = target[0].size shr cast(mip, i32);
+    size: i32 = target*.size shr cast(mip, i32);
     viewport: D3D11_VIEWPORT = {
         .Width = cast(size, f32),
         .Height = cast(size, f32),
@@ -355,7 +355,7 @@ render_to_cube: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, targe
             .Texture2DArray = { .MipSlice = mip, .FirstArraySlice = face, .ArraySize = 1 },
         };
         rtv: *ID3D11RenderTargetView = null;
-        ID3D11Device_CreateRenderTargetView(device, cast(target[0].texture, *ID3D11Resource), rtv_desc&, rtv&);
+        ID3D11Device_CreateRenderTargetView(device, cast(target*.texture, *ID3D11Resource), rtv_desc&, rtv&);
         ID3D11DeviceContext_OMSetRenderTargets(context, 1, rtv&, null);
         t.view = m4_look_at(v3(0.0, 0.0, 0.0), targets[face], ups[face]);
         draw_vertices(context, constants, t&, cube_vb, 36, m4_identity());
@@ -364,7 +364,7 @@ render_to_cube: proc(device: *ID3D11Device, context: *ID3D11DeviceContext, targe
 }
 
 // the HDR environment as a float texture
-load_hdr: proc(device: *ID3D11Device, path: [*]const char) -> *ID3D11ShaderResourceView = {
+load_hdr: proc(device: *ID3D11Device, path: ^const char) -> *ID3D11ShaderResourceView = {
     img: image_hdr = image_load_hdr(path);
     if (img.pixels == null) {
         printf("Failed to load HDR image: %s\n", path);

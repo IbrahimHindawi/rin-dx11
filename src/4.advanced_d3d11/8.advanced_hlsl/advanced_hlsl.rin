@@ -214,8 +214,8 @@ draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: 
     stride: UINT = 32;
     offset: UINT = 0;
     ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, constants, t, sizeof(transforms));
     ID3D11DeviceContext_Draw(context, count, 0);
 }
@@ -310,11 +310,11 @@ main: proc() -> i32 = {
     // build and compile shaders: the vertex shader and the first pixel
     // shader the usual way, the other three pixel shaders by entry name
     // -----------------------------------------------------------------
-    path: [*]const char = filesystem_path("src/4.advanced_d3d11/8.advanced_hlsl/advanced_hlsl.hlsl");
+    path: ^const char = filesystem_path("src/4.advanced_d3d11/8.advanced_hlsl/advanced_hlsl.hlsl");
     base: shader = shader_create(device, path, vertex_layout);
     size: u64 = 0;
-    source: [*]u8 = filesystem_read(path, size&);
-    entries: [4][*]const char = { "ps_main", "ps_green", "ps_blue", "ps_yellow" };
+    source: ^u8 = filesystem_read(path, size&);
+    entries: [4]^const char = { "ps_main", "ps_green", "ps_blue", "ps_yellow" };
     pixel_shaders: [4]*ID3D11PixelShader = {};
     for (i: u32 = 0; i < 4; i += 1) {
         code: *ID3DBlob = shader_compile(path, source, size, entries[i], "ps_5_0");

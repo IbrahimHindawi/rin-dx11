@@ -32,10 +32,10 @@ filesystem_find_root: proc() -> void = {
     exit(1);
 }
 
-filesystem_path: proc(relative: [*]const char) -> [*]const char = {
+filesystem_path: proc(relative: ^const char) -> ^const char = {
     if (filesystem_root[0] == 0) { filesystem_find_root(); }
     size: u64 = cstr_length(filesystem_root[0]&) + cstr_length(relative) + 2;
-    out: [*]char = cast(memops_arena_push(filesystem_arena&, size, 1), [*]char);
+    out: ^char = cast(memops_arena_push(filesystem_arena&, size, 1), ^char);
     buffer: []char = out[0..size];
     cstr_copy(buffer, filesystem_root[0]&);
     cstr_append(buffer, "/");
@@ -45,17 +45,17 @@ filesystem_path: proc(relative: [*]const char) -> [*]const char = {
 
 // The whole file, followed by a zero byte so text can be read in place.
 // Null if it cannot be opened.
-filesystem_read: proc(path: [*]const char, out_size: *u64) -> [*]u8 = {
+filesystem_read: proc(path: ^const char, out_size: *u64) -> ^u8 = {
     if (filesystem_root[0] == 0) { filesystem_find_root(); }
     file: *FILE = fopen(path, "rb");
     if (file == null) { return null; }
     fseek(file, 0, 2);
     size: u64 = cast(ftell(file), u64);
     fseek(file, 0, 0);
-    data: [*]u8 = cast(memops_arena_push(filesystem_arena&, size + 1, 16), [*]u8);
+    data: ^u8 = cast(memops_arena_push(filesystem_arena&, size + 1, 16), ^u8);
     fread(data, 1, size, file);
     fclose(file);
     data[size] = 0;
-    if (out_size != null) { out_size[0] = size; }
+    if (out_size != null) { out_size* = size; }
     return data;
 }

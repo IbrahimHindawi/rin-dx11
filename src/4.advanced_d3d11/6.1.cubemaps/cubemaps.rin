@@ -236,8 +236,8 @@ draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: 
     stride: UINT = 32;
     offset: UINT = 0;
     ID3D11DeviceContext_IASetVertexBuffers(context, 0, 1, buffer&, stride&, offset&);
-    t[0].model = model;
-    t[0].normal_matrix = m4_normal_matrix(model);
+    t*.model = model;
+    t*.normal_matrix = m4_normal_matrix(model);
     update_buffer(context, constants, t, sizeof(transforms));
     ID3D11DeviceContext_Draw(context, count, 0);
 }
@@ -245,7 +245,7 @@ draw_vertices: proc(context: *ID3D11DeviceContext, constants: *ID3D11Buffer, t: 
 // loads a cubemap texture from 6 individual texture faces, in the order
 // +x (right), -x (left), +y (top), -y (bottom), +z (front), -z (back)
 // -------------------------------------------------------------------
-load_cubemap: proc(device: *ID3D11Device, faces: [6][*]const char) -> *ID3D11ShaderResourceView = {
+load_cubemap: proc(device: *ID3D11Device, faces: [6]^const char) -> *ID3D11ShaderResourceView = {
     data: [6]D3D11_SUBRESOURCE_DATA = {};
     size: i32 = 0;
     for (i: u32 = 0; i < 6; i += 1) {
@@ -284,7 +284,7 @@ load_cubemap: proc(device: *ID3D11Device, faces: [6][*]const char) -> *ID3D11Sha
 // many stacks from pole to pole.
 create_sphere: proc(device: *ID3D11Device, arena: *memops_arena, segments: u32, out_count: *UINT) -> *ID3D11Buffer = {
     vertex_count: u32 = segments * segments * 6;
-    vertices: [*]f32 = cast(memops_arena_push(arena, cast(vertex_count, u64) * 32, 16), [*]f32);
+    vertices: ^f32 = cast(memops_arena_push(arena, cast(vertex_count, u64) * 32, 16), ^f32);
     n: u64 = 0;
     for (y: u32 = 0; y < segments; y += 1) {
         for (x: u32 = 0; x < segments; x += 1) {
@@ -301,7 +301,7 @@ create_sphere: proc(device: *ID3D11Device, arena: *memops_arena, segments: u32, 
         }
     }
     buffer: *ID3D11Buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, vertices, n * 32);
-    out_count[0] = vertex_count;
+    out_count* = vertex_count;
     return buffer;
 }
 
@@ -428,7 +428,7 @@ main: proc() -> i32 = {
     sphere_vb: *ID3D11Buffer = create_sphere(device, arena&, 64, sphere_count&);
     transforms_buffer: *ID3D11Buffer = create_constant_buffer(device, sizeof(transforms));
     env_buffer: *ID3D11Buffer = create_constant_buffer(device, sizeof(env_constants));
-    faces: [6][*]const char = {
+    faces: [6]^const char = {
         filesystem_path("resources/textures/skybox/right.jpg"),
         filesystem_path("resources/textures/skybox/left.jpg"),
         filesystem_path("resources/textures/skybox/top.jpg"),
